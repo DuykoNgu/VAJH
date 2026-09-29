@@ -264,6 +264,7 @@ Hackathon_VJAI/
 │   │                          #   cache (Redis), files (MinIO / S3)
 │   ├── requirements.txt
 │   └── .env.example
+├── docker-compose.yml         # Khởi chạy toàn bộ hạ tầng: Qdrant, Redis, Postgres, MinIO
 └── docs/
     └── architecture.webp      # Sơ đồ kiến trúc hệ thống
 ```
@@ -297,15 +298,21 @@ git clone https://github.com/DatTQ27/Hackathon_VJAI.git
 cd Hackathon_VJAI
 ```
 
-### 3. Khởi chạy dịch vụ nền (Qdrant, Redis, PostgreSQL)
+### 3. Khởi chạy dịch vụ nền (Docker Compose)
+
+Khởi động đồng thời tất cả dịch vụ dữ liệu với 1 lệnh duy nhất:
 
 ```bash
-docker run -d --name lusia-qdrant -p 6333:6333 qdrant/qdrant
-docker run -d --name lusia-redis -p 6379:6379 redis:7
-docker run -d --name lusia-postgres -p 5432:5432 \
-  -e POSTGRES_USER=lusia -e POSTGRES_PASSWORD=lusia -e POSTGRES_DB=lusia_db \
-  postgres:16
+docker compose up -d
 ```
+
+> 💡 **Các cổng dịch vụ đã sẵn sàng:**
+> - **Qdrant (Vector DB)**: <http://localhost:6333/dashboard> (Web UI)
+> - **Redis (Cache & Session)**: `localhost:6379`
+> - **PostgreSQL**: `localhost:5432` (`db: lusia_db`, `user/pass: lusia/lusia`)
+> - *(Tùy chọn) **MinIO**: Bỏ comment trong docker-compose.yml khi cần dùng Object Storage S3*
+>
+> *(Khi cần dừng dịch vụ: `docker compose down`)*
 
 ### 4. Backend (FastAPI)
 

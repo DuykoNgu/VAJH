@@ -1,0 +1,89 @@
+services:
+  # ============================================================================
+  # 1. Qdrant: Vector Database (Lưu trữ embeddings SGK, tài liệu học tập, RAG)
+  # ============================================================================
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: lusia-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"   # REST API & Web UI (http://localhost:6333/dashboard)
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__ENABLE_CORS=true
+    networks:
+      - lusia-network
+
+  # ============================================================================
+  # 2. Redis: In-Memory Cache (Quản lý phiên đàm thoại STT/TTS, bộ nhớ ngắn hạn)
+  # ============================================================================
+  redis:
+    image: redis:7
+    container_name: lusia-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - lusia-network
+
+  # ============================================================================
+  # 3. PostgreSQL: Relational Database (Hồ sơ học sinh, giáo viên, tiến độ học)
+  # ============================================================================
+  postgres:
+    image: postgres:16
+    container_name: lusia-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lusia
+      POSTGRES_PASSWORD: lusia
+      POSTGRES_DB: lusia_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - lusia-network
+
+  # ============================================================================
+  # 4. MinIO (Tùy chọn): S3-Compatible Storage (Bỏ comment khi cần lưu trữ file S3)
+  # ============================================================================
+  # minio:
+  #   image: quay.io/minio/minio:RELEASE.2024-03-30T09-41-56Z
+  #   container_name: lusia-minio
+  #   restart: unless-stopped
+  #   command: server /data --console-address ":9001"
+  #   environment:
+  #     MINIO_ROOT_USER: lusia
+  #     MINIO_ROOT_PASSWORD: lusia_minio_password
+  #   ports:
+  #     - "9000:9000"
+  #     - "9001:9001"
+  #   volumes:
+  #     - minio_data:/data
+  #   networks:
+  #     - lusia-network
+
+# ==============================================================================
+# Persistent Volumes (Đảm bảo dữ liệu không bị mất khi restart container)
+# ==============================================================================
+volumes:
+  qdrant_data:
+    name: lusia_qdrant_data
+  redis_data:
+    name: lusia_redis_data
+  postgres_data:
+    name: lusia_postgres_data
+  # minio_data:
+  #   name: lusia_minio_data
+
+# ==============================================================================
+# Networks
+# ==============================================================================
+networks:
+  lusia-network:
+    name: lusia-network
+    driver: bridge
