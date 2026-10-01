@@ -1,1 +1,1 @@
-"""Vector DB (Qdrant): SGK, tài liệu, bài tập."""
+"""pgvector (PostgreSQL): tìm kiếm ngữ nghĩa trên bảng chunks (đoạn SGK + mô tả hình)."""

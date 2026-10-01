@@ -1,23 +1,6 @@
 services:
   # ============================================================================
-  # 1. Qdrant: Vector Database (Lưu trữ embeddings SGK, tài liệu học tập, RAG)
-  # ============================================================================
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: lusia-qdrant
-    restart: unless-stopped
-    ports:
-      - "6333:6333"   # REST API & Web UI (http://localhost:6333/dashboard)
-      - "6334:6334"   # gRPC
-    volumes:
-      - qdrant_data:/qdrant/storage
-    environment:
-      - QDRANT__SERVICE__ENABLE_CORS=true
-    networks:
-      - lusia-network
-
-  # ============================================================================
-  # 2. Redis: In-Memory Cache (Quản lý phiên đàm thoại STT/TTS, bộ nhớ ngắn hạn)
+  # 1. Redis: cache, session state, background-job queue (arq)
   # ============================================================================
   redis:
     image: redis:7
@@ -31,10 +14,11 @@ services:
       - lusia-network
 
   # ============================================================================
-  # 3. PostgreSQL: Relational Database (Hồ sơ học sinh, giáo viên, tiến độ học)
+  # 2. PostgreSQL + pgvector: hồ sơ học sinh, giáo viên, tiến độ học + embedding SGK cho RAG
+  #    Schema do `python -m app.migrate` tạo (service `migrate` bên dưới), không tự chạy SQL nữa.
   # ============================================================================
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     container_name: lusia-postgres
     restart: unless-stopped
     environment:
@@ -45,11 +29,17 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lusia -d lusia_db"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
     networks:
       - lusia-network
 
   # ============================================================================
-  # 4. MinIO (Tùy chọn): S3-Compatible Storage (Bỏ comment khi cần lưu trữ file S3)
+  # 3. Object storage (S3-compatible) - TẠM PENDING: image MinIO công khai không còn tải được;
+  #    chọn server S3 thay thế sau. Code dùng S3 API nên không đổi.
   # ============================================================================
   # minio:
   #   image: quay.io/minio/minio:RELEASE.2024-03-30T09-41-56Z
@@ -67,12 +57,72 @@ services:
   #   networks:
   #     - lusia-network
 
+  # ============================================================================
+  # Ứng dụng (profile "app"): docker compose --profile app up
+  # Không bật profile thì chỉ chạy hạ tầng ở trên, API chạy từ venv local.
+  # ============================================================================
+  migrate:
+    profiles: ["app"]
+    build: ./backend
+    command: python -m app.migrate
+    environment: &app-env
+      APP_ENV: development
+      AUTH_MODE: dev
+      DATABASE_URL: postgresql://lusia:lusia@postgres:5432/lusia_db
+      DATABASE_URL_UNPOOLED: postgresql://lusia:lusia@postgres:5432/lusia_db
+      REDIS_URL: redis://redis:6379
+    env_file:
+      - path: ./backend/.env
+        required: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - lusia-network
+
+  api:
+    profiles: ["app"]
+    build: ./backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment: *app-env
+    env_file:
+      - path: ./backend/.env
+        required: false
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/migrations:/app/migrations
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    networks:
+      - lusia-network
+
+  worker:
+    profiles: ["app"]
+    build: ./backend
+    command: arq app.worker.WorkerSettings
+    environment: *app-env
+    env_file:
+      - path: ./backend/.env
+        required: false
+    volumes:
+      - ./backend/app:/app/app
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    networks:
+      - lusia-network
+
 # ==============================================================================
 # Persistent Volumes (Đảm bảo dữ liệu không bị mất khi restart container)
 # ==============================================================================
 volumes:
-  qdrant_data:
-    name: lusia_qdrant_data
   redis_data:
     name: lusia_redis_data
   postgres_data:

@@ -37,6 +37,7 @@
 - [🎬 Kịch bản sử dụng (Demo Scenario)](#-kịch-bản-sử-dụng-demo-scenario)
 - [🛠️ Công nghệ & Ngăn xếp kỹ thuật (Tech Stack)](#️-công-nghệ--ngăn-xếp-kỹ-thuật-tech-stack)
 - [📁 Cấu trúc thư mục (Project Structure)](#-cấu-trúc-thư-mục-project-structure)
+- [🗄️ Cơ sở dữ liệu (Database Schema)](#️-cơ-sở-dữ-liệu-database-schema)
 - [🛡️ Trí tuệ nhân tạo có trách nhiệm (Responsible AI)](#️-trí-tuệ-nhân-tạo-có-trách-nhiệm-responsible-ai)
 - [📦 Hướng dẫn cài đặt & Khởi chạy (Getting Started)](#-hướng-dẫn-cài-đặt--khởi-chạy-getting-started)
 - [🗺️ Lộ trình phát triển (Roadmap)](#️-lộ-trình-phát-triển-roadmap)
@@ -188,8 +189,7 @@ flowchart TB
 
     subgraph DATA["🗄️ Data / Storage Layer"]
         direction TB
-        QD[("Qdrant<br/>SGK, tài liệu, bài tập")]
-        PG[("PostgreSQL<br/>người dùng, tiến độ, điểm")]
+        PG[("PostgreSQL + pgvector (Neon)<br/>người dùng, tiến độ, điểm<br/>embedding SGK cho RAG")]
         RD[("Redis<br/>session, cache")]
         S3[("MinIO / S3<br/>PDF, ảnh, audio")]
     end
@@ -233,8 +233,7 @@ flowchart LR
 - **Backend & API Gateway**: Python **FastAPI** (Uvicorn).
 - **Frontend**: **Next.js** (App Router, TypeScript) + **Tailwind CSS** — Responsive Web & Mobile, High Contrast, Screen Reader Friendly (WAI-ARIA).
 - **Cơ sở dữ liệu & Lưu trữ (Data & Storage)**:
-  - **Vector DB**: Qdrant (Lưu trữ và truy xuất ngữ nghĩa tài liệu SGK).
-  - **Relational DB**: PostgreSQL / MySQL (Quản lý hồ sơ học sinh, giáo viên, tiến độ).
+  - **PostgreSQL + pgvector** (chạy trên **Neon**): Hồ sơ học sinh, giáo viên, tiến độ học **và** embedding SGK cho RAG — một database duy nhất.
   - **In-Memory Cache**: Redis (Quản lý phiên đàm thoại, trạng thái ngắn hạn của Agent).
   - **Object Storage**: MinIO / AWS S3 (Lưu trữ file âm thanh, tài liệu PDF, hình ảnh bài học).
 
@@ -260,13 +259,68 @@ Hackathon_VJAI/
 │   │   ├── agents/            # AI Agent Core: orchestrator, tutor, knowledge,
 │   │   │                      #   vision, document, assessment, student_model
 │   │   ├── tools.py           # Tool Layer: search_knowledge(), generate_quiz(), …
-│   │   └── storage/           # Data Layer: vector (Qdrant), relational (PostgreSQL),
-│   │                          #   cache (Redis), files (MinIO / S3)
+│   │   └── storage/           # Data Layer: vector (pgvector), relational (PostgreSQL),
+│   │       │                  #   cache (Redis), files (MinIO / S3)
+│   ├── migrations/            # Schema database: 000_init.sql, 001_…sql (python -m app.migrate)
+│   ├── tests/                 # pytest (+ sql/schema_test.sql kiểm tra ràng buộc)
 │   ├── requirements.txt
 │   └── .env.example
-├── docker-compose.yml         # Khởi chạy toàn bộ hạ tầng: Qdrant, Redis, Postgres, MinIO
+├── docker-compose.yml         # Hạ tầng: Postgres + pgvector, Redis, MinIO
 └── docs/
     └── architecture.webp      # Sơ đồ kiến trúc hệ thống
+```
+
+---
+
+## 🗄️ Cơ sở dữ liệu (Database Schema)
+
+Một database **PostgreSQL + pgvector** (chạy trên **Neon**, hoặc Docker khi làm offline) chứa cả dữ liệu học tập lẫn embedding cho RAG; file gốc (PDF, ảnh) nằm ở MinIO / S3. Chi tiết: [`backend/migrations/`](backend/migrations/).
+
+```mermaid
+erDiagram
+    users ||--o| students : "là"
+    users ||--o| teachers : "là"
+    teachers ||--o{ classes : "phụ trách"
+    classes ||--o{ class_students : "gồm"
+    students ||--o{ class_students : "thuộc"
+    users |o--o{ documents : "tải lên"
+    documents ||--o{ lessons : "gồm"
+    documents ||--o{ chunks : "cắt thành"
+    lessons |o--o{ chunks : "chứa"
+    teachers |o--o{ chunks : "duyệt mô tả hình"
+    students ||--o{ learning_sessions : "học"
+    lessons |o--o{ learning_sessions : "về"
+    learning_sessions ||--o{ messages : "gồm"
+    students ||--o{ quizzes : "làm"
+    lessons ||--o{ quizzes : "về"
+    quizzes ||--o{ questions : "gồm"
+    questions ||--o| answers : "được trả lời"
+```
+
+| Nhóm | Bảng | Ghi chú |
+| :--- | :--- | :--- |
+| Người dùng | `users`, `students`, `teachers`, `classes`, `class_students` | **Hiện chưa có đăng nhập** (danh tính dev, xem Getting Started); giai đoạn 12 thêm đăng nhập: học sinh `username` + mã PIN 6 số do giáo viên cấp (**đọc bằng giọng nói** hoặc nhờ người khác gõ hộ), giáo viên dùng mật khẩu. Vai trò = có dòng trong `students` / `teachers`, nên database tự chặn gán nhầm vai trò. |
+| Học liệu & RAG | `documents`, `lessons`, `chunks` | `chunks` chứa đoạn SGK và **mô tả hình** do Vision Agent viết, kèm embedding (`vector(1536)`). Mô tả hình phải được **giáo viên duyệt** (Human Oversight). |
+| Hội thoại | `learning_sessions`, `messages` | Chỉ lưu transcript, **không lưu audio gốc** (bảo vệ quyền riêng tư của trẻ). Mỗi câu trả lời ghi rõ agent nào trả lời. |
+| Đánh giá | `quizzes`, `questions`, `answers` | Điểm từ 0–1 (tự luận chấm từng phần). Mỗi câu hỏi đánh dấu `focus`: về **kiến thức** hay về **hình vẽ**. |
+| Student Model | view `lesson_mastery` | Mức nắm bài theo từng bài, tách `concept_mastery` / `figure_mastery` → giáo viên biết học sinh hổng vì không hiểu bài hay vì không hình dung được hình. |
+
+Hai truy vấn cốt lõi:
+
+```sql
+-- Knowledge Agent: tìm 5 đoạn liên quan, chỉ dùng mô tả hình đã được giáo viên duyệt
+SELECT content FROM chunks
+WHERE lesson_id = $1 AND (kind = 'text' OR review = 'approved')
+ORDER BY embedding <=> $2
+LIMIT 5;
+
+-- Teacher Dashboard: học sinh nào đang yếu bài nào, yếu phần nào
+SELECT u.full_name, l.title, m.concept_mastery, m.figure_mastery
+FROM class_students cs
+JOIN lesson_mastery m ON m.student_id = cs.student_id
+JOIN users u   ON u.id = cs.student_id
+JOIN lessons l ON l.id = m.lesson_id
+WHERE cs.class_id = $1 AND m.mastery < 0.5;
 ```
 
 ---
@@ -288,7 +342,8 @@ Hackathon_VJAI/
 ### 1. Yêu cầu tiên quyết (Prerequisites)
 - Python >= 3.10
 - Node.js >= 20.9
-- Docker (chạy Qdrant, Redis, PostgreSQL)
+- Docker (Postgres + pgvector, Redis)
+- [Neon CLI](https://neon.com/docs/cli/install) (nếu dùng Neon)
 - Micro & Loa thiết bị hoạt động tốt
 
 ### 2. Clone repository
@@ -298,21 +353,26 @@ git clone https://github.com/DatTQ27/Hackathon_VJAI.git
 cd Hackathon_VJAI
 ```
 
-### 3. Khởi chạy dịch vụ nền (Docker Compose)
+### 3. Dịch vụ nền & Database
 
-Khởi động đồng thời tất cả dịch vụ dữ liệu với 1 lệnh duy nhất:
+Tạo file môi trường (**không commit file này**) — giá trị mặc định chạy được ngay với Docker local:
 
 ```bash
-docker compose up -d
+cp backend/.env.example backend/.env
+docker compose up -d          # Postgres + pgvector (localhost:5432) và Redis (localhost:6379)
 ```
 
-> 💡 **Các cổng dịch vụ đã sẵn sàng:**
-> - **Qdrant (Vector DB)**: <http://localhost:6333/dashboard> (Web UI)
-> - **Redis (Cache & Session)**: `localhost:6379`
-> - **PostgreSQL**: `localhost:5432` (`db: lusia_db`, `user/pass: lusia/lusia`)
-> - *(Tùy chọn) **MinIO**: Bỏ comment trong docker-compose.yml khi cần dùng Object Storage S3*
->
-> *(Khi cần dừng dịch vụ: `docker compose down`)*
+> Muốn chạy **cả backend trong Docker** (migrate → API :8000 → worker) thay vì venv local: `docker compose --profile app up --build`.
+
+> Object storage (S3/MinIO) đang **tạm pending**: image MinIO công khai không còn tải được; sẽ chọn server S3 thay thế sau.
+
+**Database — chọn một trong hai:**
+
+- **A. Postgres local (mặc định):** container `lusia-postgres` ở trên (`lusia/lusia@localhost:5432/lusia_db`).
+- **B. Neon:** cả nhóm dùng chung database trên cloud (project **VJAH**). Cần được mời vào org Neon của nhóm và chạy `neon login` một lần, sau đó:
+  ```bash
+  cd backend && neon link && cd ..   # chọn project VJAH → ghi DATABASE_URL / DATABASE_URL_UNPOOLED vào backend/.env
+  ```
 
 ### 4. Backend (FastAPI)
 
@@ -320,12 +380,57 @@ docker compose up -d
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env           # Điền API key vào .env — không commit file này
-uvicorn app.main:app --reload --port 8000 --env-file .env
+pip install -r requirements.txt -r requirements-dev.txt
+python -m app.migrate          # tạo / cập nhật schema (xem "Migration" bên dưới)
+python -m app.seed             # dữ liệu demo (xem "Danh tính dev" bên dưới)
+uvicorn app.main:app --reload --port 8000
 ```
 
-Mở <http://localhost:8000/docs> để xem và thử API (Swagger UI).
+Mở <http://localhost:8000/docs> để xem và thử API (Swagger UI). Kiểm tra nhanh: `curl localhost:8000/health/ready` và `curl localhost:8000/me`.
+
+#### Migration (schema database)
+
+Schema nằm trong `backend/migrations/` (`000_init.sql`, `001_...sql`, …). `python -m app.migrate` chạy các file **chưa chạy** theo thứ tự tên và ghi lại vào bảng `schema_migrations`; chạy lại nhiều lần không sao. Lệnh luôn dùng `DATABASE_URL_UNPOOLED` (URL **không qua pooler**).
+
+| Tình huống | Lệnh |
+| :--- | :--- |
+| Database mới (trống) | `python -m app.migrate` |
+| Database đã tạo từ `schema.sql` cũ (volume Docker cũ, Neon project VJAH) — chạy **một lần** | `python -m app.migrate --baseline 000_init` rồi `python -m app.migrate` |
+| Thay đổi schema | thêm file mới `backend/migrations/00N_mo_ta.sql`, **không sửa** file đã chạy |
+
+**Neon:** luôn thử trên một branch trước — tạo branch, trỏ `DATABASE_URL_UNPOOLED` vào branch, chạy baseline/migrate, kiểm tra app; sau đó mới chạy trên branch chính.
+
+**Kiểm tra ràng buộc schema:** `pytest tests/test_schema_sql.py` (chạy `tests/sql/schema_test.sql` trên database test riêng `lusia_test`, không đụng tới database trong `.env`).
+
+#### Dữ liệu demo & danh tính dev (chưa có đăng nhập)
+
+Tới **giai đoạn 12** (change `authentication`) LUSIA **chưa có đăng nhập**: backend chạy ở `AUTH_MODE=dev` và coi mỗi request là của một người dùng demo. Chế độ này **bị từ chối khi `APP_ENV=production`**.
+
+```bash
+python -m app.seed      # tạo (chạy lại nhiều lần không sao): giáo viên colan, lớp 8A, học sinh minh8a (vi), hana8a (ja)
+```
+
+- Không có header → endpoint cần học sinh dùng `DEV_STUDENT_USERNAME` (mặc định `minh8a`), endpoint cần giáo viên dùng `DEV_TEACHER_USERNAME` (mặc định `colan`).
+- Header `X-Dev-User: <username>` chọn người dùng khác. Username sai → 400; chưa seed → 503.
+- `GET /me` trả về người dùng hiện tại (response giữ nguyên khi có đăng nhập).
+
+```bash
+curl -s localhost:8000/me                            # minh8a, language vi
+curl -s -H "X-Dev-User: hana8a" localhost:8000/me    # hana8a, language ja
+curl -s -H "X-Dev-User: colan"  localhost:8000/me    # role teacher
+```
+
+Quy ước để thêm đăng nhập sau này **không phải viết lại** service:
+- Chỉ `app/identity.py` được biết về danh tính dev (có test kiểm tra). Endpoint lấy người dùng qua `current_student` / `current_teacher` / `current_user` rồi truyền **id tường minh** xuống service, agent, job.
+- Cột chủ sở hữu (`learning_sessions.student_id`, `documents.uploaded_by`, `chunks.reviewed_by`…) luôn lấy từ người dùng hiện tại, không bao giờ từ body request.
+- Chỗ nào sau này cần kiểm tra quyền thì ghi chú `# authz-later: <điều kiện>` (vd. `# authz-later: teacher must own class`) — giai đoạn 12 sẽ `grep -rn "authz-later"` để xử lý hết.
+
+#### Background worker & test
+
+```bash
+arq app.worker.WorkerSettings    # worker chạy job nền (cần Redis)
+pytest                           # dùng database riêng lusia_test (TEST_DATABASE_URL) + provider AI giả, không cần API key
+```
 
 ### 5. Frontend (Next.js)
 
@@ -335,7 +440,9 @@ npm install
 npm run dev
 ```
 
-Mở <http://localhost:3000>.
+Mở <http://localhost:3000>. Backend mặc định ở `http://localhost:8000`; đổi bằng `NEXT_PUBLIC_API_URL` trong `frontend/.env.local` (giá trị được gắn cứng lúc `next build`).
+
+Khi API backend thay đổi: chạy backend rồi `npm run gen:api` để sinh lại kiểu TypeScript (`src/lib/api-types.ts`, có commit vào repo).
 
 ---
 
