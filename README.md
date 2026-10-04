@@ -233,34 +233,42 @@ Trên một laptop, dùng **Google Chrome** (nhận giọng nói tiếng Việt 
 docker compose up -d                                   # Postgres + Redis
 cd backend && source .venv/bin/activate
 python -m app.migrate && python -m app.seed            # schema + giáo viên colan, lớp 8A, học sinh minh8a
+# ⚠️ app.migrate dùng DATABASE_URL_UNPOOLED trong .env nếu có (Neon!) — demo local: đặt cả hai biến về Postgres local
 python -m app.voice.tts --download                     # model giọng đọc ZeroTTS (~900 MB, một lần)
+python -c "from huggingface_hub import hf_hub_download as d; d('juliozhao/DocLayout-YOLO-DocStructBench', 'doclayout_yolo_docstructbench_imgsz1024.pt', local_dir='data/models/doclayout')"  # tìm hình trên sách scan (~40 MB, một lần)
 python -m app.ingest ~/Downloads/toan8.pdf --title "Toán 8 tập 2" --subject toan --grade 8
+# Sách scan (mỗi trang là ảnh): OCR của macOS + LLM chỉ sửa công thức (gửi chữ, không gửi ảnh) + model bố cục tìm hình.
+# Chỉ nạp một phần sách: cắt PDF trước, giữ trang mục lục để tự chia bài (vd. Toán 8 tập một, trang 1-29 = Chương I, ~2,5 phút).
 # (trong backend/.env: OPENAI_API_KEY và OPENAI_LLM_MODEL)
+arq app.worker.WorkerSettings &                        # worker xử lý PDF tải lên từ trang kiểm duyệt
 uvicorn app.main:app --port 8000                       # đợi ~20 giây để nạp sẵn model giọng đọc + embedding
 cd ../frontend && npm run dev                          # mở http://localhost:3000/learn
 ```
 
 > Nếu cổng 3000 đang bận, Next.js chạy ở 3001: thêm cổng đó cho backend bằng `FRONTEND_ORIGINS="http://localhost:3000,http://localhost:3001"`.
 
-**Lời thoại demo** (học sinh không cần nhìn màn hình, không cần tìm nút nào):
+**Lời thoại demo.** Bước 0 — giáo viên chuẩn bị tri thức trên `/curation`: tải PDF lên (hoặc mở sách đã nạp), sửa đoạn văn lỗi, kiểm tra dữ kiện từng hình rồi **Duyệt**, bấm **Nghe thử** một phần, và **Xuất bản**. Học sinh chỉ thấy tài liệu đã xuất bản; tri thức là cơ sở cố định, còn cách LUSIA diễn đạt thay đổi mỗi lần giảng.
+
+Học sinh (không cần nhìn màn hình, không cần tìm nút nào):
 
 1. Mở `/learn`, nhấn **phím bất kỳ** → LUSIA chào và đọc danh sách bài.
 2. Giữ **phím cách**, nói *“bài hai”* (hoặc mũi tên xuống + Enter) → LUSIA **giảng ngay phần 1** rồi hỏi một câu kiểm tra.
 3. Trả lời bằng giọng nói → LUSIA chấm (đúng / đúng một phần / chưa đúng, giảng lại nếu cần) → nói *“tiếp”*.
-4. Phần có hình: **Vision** mô tả đồ thị (kèm *“Mô tả hình này chưa được thầy cô kiểm duyệt.”*), Tutor giảng, rồi hỏi tiếp. Màn hình hiện **Orchestrator → Vision → Tutor → Assessment**.
+4. Phần có hình: **Vision** lấy dữ kiện hình đã duyệt, Tutor dựng hình trong đầu em bằng tưởng tượng, rồi hỏi tiếp. Màn hình hiện **Orchestrator → Vision → Tutor → Assessment**.
 5. Hỏi chen bất cứ lúc nào: *“Trục tung là trục nào?”* → LUSIA trả lời rồi nhắc lại câu hỏi đang chờ.
 6. Hết bài: LUSIA tóm tắt và mời *“kiểm tra mình”* → 3 câu trắc nghiệm bằng giọng nói → điểm.
-7. Mở `/dashboard`: lớp 8A hiện **Hiểu bài / Hiểu hình** (gồm cả câu kiểm tra từng phần) và chỗ **Yếu**; duyệt mô tả hình → học lại phần hình, không còn câu cảnh báo.
+7. Mở `/dashboard`: lớp 8A hiện **Hiểu bài / Hiểu hình** (gồm cả câu kiểm tra từng phần) và chỗ **Yếu**.
 
 Phím ở mọi nơi: **Space** giữ để nói · **Esc** dừng · **R** nghe lại · **H** trợ giúp. Lệnh nói: *nhắc lại, dừng, đổi bài, chậm lại, nhanh lên, trợ giúp, tiếp, kiểm tra mình*.
 
 > Máy có ứng dụng khác chiếm cổng 8000/3000? Chạy API ở cổng khác (`uvicorn app.main:app --port 8010`) và frontend với `NEXT_PUBLIC_API_URL=http://localhost:8010 npm run dev -- --port 3001`, thêm `FRONTEND_ORIGINS="http://localhost:3001"` cho backend.
 
-Đặt lại dữ liệu demo giữa các lần tập (xóa kết quả quiz, đưa hình về chờ duyệt):
+Đặt lại dữ liệu demo giữa các lần tập (xóa kết quả quiz, đưa hình về chờ duyệt, tài liệu về bản nháp):
 
 ```bash
 docker exec -i lusia-postgres psql -U lusia -d lusia_db -c "DELETE FROM learning_sessions; DELETE FROM quizzes;" \
-  -c "UPDATE chunks SET review='pending', reviewed_by=NULL, reviewed_at=NULL WHERE kind='figure';"
+  -c "UPDATE chunks SET review='pending', reviewed_by=NULL, reviewed_at=NULL WHERE kind='figure';" \
+  -c "UPDATE documents SET published_at=NULL, published_by=NULL;"
 ```
 
 ---
@@ -290,6 +298,7 @@ Hackathon_VJAI/
 │       ├── layout.tsx         # Layout chung (lang="vi" cho trình đọc màn hình)
 │       ├── page.tsx           # Trang chủ: chọn Học sinh / Giáo viên
 │       ├── learn/             # Giao diện học sinh (voice-first)
+│       ├── curation/          # Kiểm duyệt nội dung (chuẩn bị tri thức, xuất bản)
 │       └── dashboard/         # Teacher Dashboard
 ├── backend/                   # Python FastAPI
 │   ├── app/

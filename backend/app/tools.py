@@ -3,7 +3,7 @@
 search_knowledge, get_student_profile, save_learning_result, generate_quiz,
 grade_answer, describe_image, read_document, create_learning_plan, send_teacher_report
 
-Đã có: read_document (đọc PDF, OCR trang không có lớp chữ), describe_figure (mô tả hình để đọc thành tiếng).
+Đã có: read_document (đọc PDF, OCR trang không có lớp chữ), describe_figure (dữ kiện của hình để giáo viên duyệt).
 """
 import asyncio
 import re
@@ -23,6 +23,13 @@ OCR_PROMPT = (
 )
 
 
+OCR_FIX_SYSTEM = (
+    "Đây là chữ do OCR đọc từ một trang sách giáo khoa tiếng Việt. OCR thường làm mất số mũ, căn, phân số, chỉ số và "
+    "sai dấu tiếng Việt. Sửa lại cho đúng theo ngữ cảnh: số mũ viết x^2, căn viết sqrt(2), phân số a/b; sửa chính tả. "
+    "Bỏ chữ chìm (watermark) và số trang lẻ loi. KHÔNG thêm, bớt hay diễn giải nội dung. Chỉ trả lại văn bản đã sửa."
+)
+
+
 class ToolError(Exception):
     pass
 
@@ -36,10 +43,21 @@ async def ocr_page(llm: LLMClient, page: pymupdf.Page, route: str = "document") 
     return result.text.strip()
 
 
+async def fix_ocr_text(llm: LLMClient, raw: str, route: str = "ocr_cleanup") -> str:
+    """Sửa chữ OCR local bằng LLM (chỉ gửi chữ, không gửi ảnh); LLM từ chối → giữ chữ OCR."""
+    if not raw.strip():
+        return ""
+    result = await llm.complete(route, [{"role": "user", "content": raw}], system=OCR_FIX_SYSTEM)
+    return raw if isinstance(result, Refusal) else result.text.strip()
+
+
 async def read_document(doc: pymupdf.Document, pages: list[PageText], llm: LLMClient, *,
                         limit: asyncio.Semaphore,
-                        on_page: Callable[[int], Awaitable[None]] | None = None) -> tuple[list[str], int]:
-    """Chữ của từng trang (thứ tự trang). Trang có lớp chữ dùng được → lấy thẳng; còn lại → OCR bằng LLM.
+                        on_page: Callable[[int], Awaitable[None]] | None = None,
+                        local_ocr: Callable[[pymupdf.Page], str | None] | None = None) -> tuple[list[str], int]:
+    """Chữ của từng trang (thứ tự trang). Trang có lớp chữ dùng được → lấy thẳng; còn lại → OCR.
+
+    `local_ocr` (OCR trên máy, None nếu không có) → LLM chỉ sửa chữ; không có → LLM đọc ảnh trang.
 
     Trả về (texts, số trang phải OCR). `on_page(done)` được gọi mỗi khi xong thêm một trang.
     """
@@ -50,8 +68,10 @@ async def read_document(doc: pymupdf.Document, pages: list[PageText], llm: LLMCl
 
     async def ocr(p: PageText):
         nonlocal done
+        page = doc[p.number - 1]
+        raw = await asyncio.to_thread(local_ocr, page) if local_ocr else None
         async with limit:
-            texts[p.number - 1] = await ocr_page(llm, doc[p.number - 1])
+            texts[p.number - 1] = await (fix_ocr_text(llm, raw) if raw is not None else ocr_page(llm, page))
         done += 1
         if on_page:
             await on_page(done)
@@ -69,7 +89,8 @@ FIGURE_SYSTEM = (
     "song, vuông góc, nằm trên, bên trái/phải, phía trên/dưới); xu hướng; và hình minh họa điều gì cho bài học. Chỉ ghi "
     "điều thấy được trong hình, chi tiết nào không đọc rõ thì nói rõ là không chắc. Viết số và phép toán bằng lời "
     "('y bằng hai x cộng một', không 'y = 2x + 1'). Phân loại hình: graph, diagram, map, photo, table, hoặc "
-    "decorative nếu chỉ để trang trí."
+    "decorative nếu chỉ để trang trí (linh vật, nhân vật hoạt hình, biểu tượng, dải tiêu đề) hoặc là khung/bảng chỉ "
+    "chứa chữ đã có trong trang (bảng khái niệm, hộp ghi nhớ) - phần chữ đó đã được lấy riêng."
 )
 NOTATION = re.compile(r"[=^\\$]|[a-z0-9]\s*[+*/]\s*[a-z0-9]|\d\s*-\s*\d")  # ký hiệu toán sót trong mô tả "để đọc"
 

@@ -82,7 +82,7 @@ export default function LearnApp() {
       ? [`${intro}Có ${list.length} bài.`, ...list.map((l, i) => `Số ${i + 1}: ${l.title}.`),
          voiceInput ? "Em giữ phím cách và nói số bài hoặc tên bài. Hoặc dùng phím mũi tên rồi nhấn Enter."
                     : "Em dùng phím mũi tên lên xuống rồi nhấn Enter để chọn bài."]
-      : [`${intro}Hiện chưa có bài học nào. Em nhờ thầy cô nạp sách nhé.`];
+      : [`${intro}Hiện chưa có bài học nào. Em nhờ thầy cô nạp và xuất bản sách nhé.`];
     player.current?.stop();
     speak(sentences);
   }, [speak, voiceInput]);

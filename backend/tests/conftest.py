@@ -14,6 +14,8 @@ os.environ.update(
     REDIS_URL=os.environ.get("TEST_REDIS_URL", "redis://localhost:6379/15"),
     LLM_PROVIDER="fake",
     EMBEDDING_PROVIDER="fake",
+    LOCAL_OCR="false",                      # test tất định: không gọi OCR của macOS / model bố cục thật
+    LAYOUT_MODEL_PATH="/nonexistent/doclayout.pt",
 )
 
 import psycopg  # noqa: E402

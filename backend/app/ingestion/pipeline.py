@@ -17,6 +17,7 @@ from app.config import Settings
 from app.ingestion.chunking import chunk_document, embedding_text
 from app.ingestion.figures import Figure, extract_figures
 from app.ingestion.lessons import LessonRange, segment
+from app.ingestion import scan
 from app.ingestion.pdf import bookmarks, open_pdf, page_texts
 from app.storage import relational
 from app.storage.files import FileStore, make_file_store
@@ -101,7 +102,8 @@ async def process_document(document_id: UUID, deps: Deps) -> Summary:
             await _execute("UPDATE documents SET processed_pages = %s WHERE id = %s", (done, document_id))
 
         step = "ocr"
-        texts, ocr_pages = await read_document(pdf, pages, deps.llm, limit=limit, on_page=progress)
+        texts, ocr_pages = await read_document(pdf, pages, deps.llm, limit=limit, on_page=progress,
+                                               local_ocr=scan.local_ocr if s.local_ocr else None)
 
         step = "lessons"
         reuse_lessons = bool(lessons)  # xử lý lại: giữ nguyên bài học (và id) đã có
@@ -113,7 +115,13 @@ async def process_document(document_id: UUID, deps: Deps) -> Summary:
         step = "figures"
         found: list[Figure] = []
         for page in pdf:
-            found += await asyncio.to_thread(extract_figures, page, s.figure_min_area_ratio)
+            if _lesson_of(page.number + 1, lessons) is None:
+                continue  # bìa, lời nói đầu, mục lục: không giảng → không tốn lượt mô tả hình, không chặn xuất bản
+            if scan.is_scanned(page):  # cả trang là ảnh: model bố cục khoanh hình (tách nét vẽ không dùng được)
+                found += await asyncio.to_thread(scan.detect_figures, page, s.layout_model_path,
+                                                 s.figure_min_area_ratio)
+            else:
+                found += await asyncio.to_thread(extract_figures, page, s.figure_min_area_ratio)
         skipped = 0
 
         async def describe(fig: Figure) -> FigureDescription | None:

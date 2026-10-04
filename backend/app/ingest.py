@@ -6,6 +6,7 @@ Xử lý ngay trong tiến trình (không cần worker) rồi in tóm tắt. PDF
 """
 import argparse
 import asyncio
+import logging
 import sys
 import uuid
 from pathlib import Path
@@ -56,8 +57,23 @@ async def run(args, deps: Deps) -> int:
     return 0
 
 
+class _CallLog(logging.Formatter):
+    """Mỗi lượt gọi LLM một dòng: route, thời gian, token (để biết bước nào chậm / tốn)."""
+
+    def format(self, record):
+        if record.getMessage() == "llm call":
+            r = record.__dict__
+            return (f"  llm {r['route']:<14} {r['latency_ms'] / 1000:6.1f}s  in={r['input_tokens']} "
+                    f"out={r['output_tokens']} {r['outcome']}")
+        return f"  {record.getMessage()}"
+
+
 async def main(argv=None) -> int:
     args = parse_args(argv)
+    handler = logging.StreamHandler()
+    handler.setFormatter(_CallLog())
+    logging.getLogger("lusia").addHandler(handler)
+    logging.getLogger("lusia").setLevel(logging.INFO)
     if not args.file.is_file():
         print(f"ERROR: {args.file} not found", file=sys.stderr)
         return 1

@@ -12,11 +12,11 @@ from app.ai.llm import LLMClient, LLMResult
 log = logging.getLogger("lusia.ingestion")
 
 TOC_SCAN_PAGES = 6
-TITLE_HEAD_CHARS = 300  # tiêu đề bài phải xuất hiện ở đầu trang bắt đầu bài
+TITLE_HEAD_CHARS = 600  # tiêu đề bài ở đầu trang bắt đầu bài (trang mở chương: sau đoạn giới thiệu chương)
 TOC_PROMPT = (
     "Dưới đây là chữ của các trang đầu một tài liệu học tập. Nếu có MỤC LỤC, liệt kê các bài học theo thứ tự: tiêu đề "
-    "đầy đủ đúng như in và số trang in bên cạnh. Chỉ lấy bài học/chương, bỏ mục nhỏ. Không có mục lục thì trả về danh "
-    "sách rỗng."
+    "đầy đủ đúng như in và số trang in bên cạnh. Lấy các bài học và các buổi ôn riêng ('Luyện tập chung', 'Bài tập "
+    "cuối chương', 'Ôn tập'); bỏ tên chương và mục nhỏ bên trong bài. Không có mục lục thì trả về danh sách rỗng."
 )
 
 
@@ -100,7 +100,7 @@ def verify_toc(entries: list[TocEntry], texts: list[str]) -> list[tuple[str, int
 async def from_toc(llm: LLMClient, texts: list[str]) -> list[LessonRange] | None:
     scan = "\n\n".join(f"--- Trang {i} ---\n{t}" for i, t in enumerate(texts[:TOC_SCAN_PAGES], 1))
     try:
-        result = await llm.complete("document", [{"role": "user", "content": f"{TOC_PROMPT}\n\n{scan}"}],
+        result = await llm.complete("toc", [{"role": "user", "content": f"{TOC_PROMPT}\n\n{scan}"}],
                                     schema=TocResult)
     except ValidationError as e:  # LLM trả mục lục sai định dạng → coi như không có mục lục (lỗi mạng vẫn ném ra)
         log.warning("table of contents unreadable", extra={"error": str(e)[:300]})

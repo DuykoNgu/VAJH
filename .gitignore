@@ -6,3 +6,5 @@ __pycache__/
 .agents/
 .claude/
 openspec
+# SGK (bản quyền) - không commit
+/*.pdf

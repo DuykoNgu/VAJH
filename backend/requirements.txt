@@ -14,3 +14,5 @@ sentence-transformers>=3.0
 python-multipart
 pymupdf>=1.24
 zerotts>=0.1.5
+doclayout-yolo>=0.0.4                                    # tìm hình trên trang scan (model ~40 MB, CPU)
+pyobjc-framework-Vision>=10; sys_platform == "darwin"   # OCR của macOS cho trang scan

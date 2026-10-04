@@ -107,3 +107,15 @@ async def test_decorative_figures_are_not_stored(db, deps, new_document):
     deps.llm.script({"kind": "decorative", "description": "Hoa văn"})
     summary = await process_document(doc_id, deps)
     assert summary.decorative_figures == 1 and [r for r in chunks(db, doc_id) if r[0] == "figure"] == []
+
+
+async def test_figures_outside_every_lesson_are_skipped(db, deps, new_document):
+    import pymupdf
+
+    doc = pymupdf.open(stream=pdfs.lessons_pdf(), filetype="pdf")
+    pdfs.add_graph(doc[0])  # hình trên trang bìa (ngoài mọi bài học); bìa ít chữ + có hình → OCR
+    doc_id = await new_document(doc.tobytes())
+    deps.llm.script("Toán 8 - Tập 2. Sách giáo khoa", GRAPH)
+    summary = await process_document(doc_id, deps)
+    assert summary.figure_chunks == 1 and [r[2] for r in chunks(db, doc_id) if r[0] == "figure"] == [6]
+    assert [c["route"] for c in deps.llm.calls] == ["document", "vision_offline"]   # chỉ mô tả hình trong bài

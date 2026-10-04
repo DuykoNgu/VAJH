@@ -29,7 +29,7 @@ async def test_toc_with_offset_pages():
     assert source == "toc"
     assert [(l.title, l.page_start, l.page_end) for l in lessons] == [
         ("Bài 1. Hàm số bậc nhất", 3, 4), ("Bài 2. Đồ thị của hàm số bậc nhất", 5, 6)]
-    assert llm.calls[0]["route"] == "document"
+    assert llm.calls[0]["route"] == "toc"
 
 
 async def test_unverifiable_toc_falls_back_to_single_lesson():
@@ -66,3 +66,13 @@ async def test_malformed_toc_output_falls_back_to_single_lesson():
     llm = FakeLLM(get_settings())  # không có kịch bản → trả chữ thay vì JSON mục lục
     (lessons, source), _ = await run(pdfs.plain_pdf(2), llm, title="Phiếu")
     assert source == "single" and lessons == [LessonRange("Phiếu", 1, 2)]
+
+
+def test_lesson_heading_after_chapter_intro_is_verified():
+    from app.ingestion.lessons import TocEntry, verify_toc
+
+    intro = "Chương I. Đa thức. " + "Ở lớp 7 các em đã học về đa thức một biến. " * 8   # ~350 ký tự giới thiệu chương
+    texts = ["Mục lục", intro + "Bài 1. Đơn thức. Khái niệm...", "Luyện tập chung. Ví dụ 1..."]
+    entries = [TocEntry(title="Bài 1. Đơn thức", printed_page=1), TocEntry(title="Luyện tập chung", printed_page=2)]
+    assert len(intro) > 300
+    assert verify_toc(entries, texts) == [("Bài 1. Đơn thức", 2), ("Luyện tập chung", 3)]

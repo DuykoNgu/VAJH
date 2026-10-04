@@ -23,6 +23,8 @@ ROUTE_EFFORTS = {
     "vision_live": "medium",
     "vision_offline": "high",
     "document": "medium",
+    "ocr_cleanup": "low",
+    "toc": "low",  # đọc mục lục: effort medium mất nhiều phút với SGK thật, low ~20 s và vẫn đúng  # sửa chữ OCR local (chỉ gửi chữ): việc máy móc, không cần suy luận nhiều
     "student_model": "medium",
 }
 ANTHROPIC_DEFAULT_MODEL = "claude-opus-5-5"
@@ -65,12 +67,15 @@ class Settings(BaseSettings):
     figure_min_area_ratio: float = 0.02
     llm_concurrency: int = 4
     ingest_timeout_s: int = 3600
+    llm_timeout_s: float = 180  # mỗi lần gọi LLM (SDK mặc định 600 s × 3 lần thử: một kết nối treo giữ cả việc nạp sách)
 
     llm_provider: Literal["openai", "anthropic", "fake"] | None = None
     embedding_provider: Literal["local", "fake"] | None = None
     stt_provider: Literal["fake"] = "fake"
     tts_provider: Literal["zerotts", "fake"] | None = None
     zerotts_model_dir: Path = BACKEND_DIR / "data" / "models" / "zerotts"
+    local_ocr: bool = True  # trang scan: OCR của macOS + LLM chỉ sửa chữ (rẻ hơn ~7 lần token vào); False → OCR bằng LLM
+    layout_model_path: Path = BACKEND_DIR / "data" / "models" / "doclayout" / "doclayout_yolo_docstructbench_imgsz1024.pt"
     zerotts_voice: str = "maichi"
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
@@ -83,6 +88,8 @@ class Settings(BaseSettings):
     def _defaults_and_production_keys(self):
         if not self.zerotts_model_dir.is_absolute():
             self.zerotts_model_dir = BACKEND_DIR / self.zerotts_model_dir
+        if not self.layout_model_path.is_absolute():
+            self.layout_model_path = BACKEND_DIR / self.layout_model_path
         if not self.files_dir.is_absolute():  # đường dẫn tương đối tính từ backend/, không phụ thuộc thư mục đang chạy
             self.files_dir = BACKEND_DIR / self.files_dir
         test = self.app_env == "test"

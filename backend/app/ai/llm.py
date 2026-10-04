@@ -103,7 +103,8 @@ class AnthropicLLM:
         if self._client is None:
             import anthropic
 
-            self._client = anthropic.AsyncAnthropic(api_key=self.settings.anthropic_api_key)
+            self._client = anthropic.AsyncAnthropic(api_key=self.settings.anthropic_api_key,
+                                                   timeout=self.settings.llm_timeout_s)
         return self._client
 
     def _params(self, cfg: Route, messages, system, max_tokens) -> dict:
@@ -168,7 +169,7 @@ class OpenAILLM:
         if self._client is None:
             import openai
 
-            self._client = openai.AsyncOpenAI(api_key=self.settings.openai_api_key)
+            self._client = openai.AsyncOpenAI(api_key=self.settings.openai_api_key, timeout=self.settings.llm_timeout_s)
         return self._client
 
     @staticmethod
