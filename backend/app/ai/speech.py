@@ -47,6 +47,10 @@ def make_stt(settings) -> STT:
 
 
 def make_tts(settings) -> TTS:
+    if settings.tts_provider == "zerotts":
+        from app.voice.tts import ZeroTTSEngine
+
+        return ZeroTTSEngine(settings)
     from app.ai.fakes import FakeTTS
 
     return FakeTTS()

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.agents import base
-from app.agents.base import (AGENT_NAMES, AgentContractError, AgentResult, Handoff, Registry, StubAgent,
+from app.agents.base import (AGENT_NAMES, AgentContractError, AgentResult, Evidence, Handoff, Registry, StubAgent,
                              TextDelta, TurnContext, run_agent)
 from tests.conftest import running_app
 
@@ -99,3 +99,10 @@ async def test_startup_fails_when_an_agent_is_missing(monkeypatch):
 async def test_stub_answers_in_japanese():
     events = await collect(base.registry.get("vision"), ctx("ja"))
     assert events == [AgentResult("vision", base.NOT_AVAILABLE["ja"])]
+
+
+def test_evidence_is_carried_in_context():
+    ev = Evidence(42, "figure", 6, "Đồ thị đi lên", review="pending", lesson_title="Bài 2")
+    c = TurnContext(mode="chat", session_id=SESSION, student_id=STUDENT, evidence=(ev,))
+    assert c.evidence[0].unreviewed and c.evidence[0].page == 6
+    assert ctx().evidence == ()

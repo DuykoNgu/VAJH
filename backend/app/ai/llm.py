@@ -94,10 +94,17 @@ def _text(message) -> str:
 
 class AnthropicLLM:
     def __init__(self, settings: Settings, client=None):
-        import anthropic
-
         self.settings = settings
-        self.client = client or anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        self._client = client
+
+    @property
+    def client(self):
+        # Tạo khi gọi lần đầu: thiếu key thì lỗi lúc gọi LLM, không chặn API khởi động
+        if self._client is None:
+            import anthropic
+
+            self._client = anthropic.AsyncAnthropic(api_key=self.settings.anthropic_api_key)
+        return self._client
 
     def _params(self, cfg: Route, messages, system, max_tokens) -> dict:
         params = dict(model=cfg.model, max_tokens=max_tokens, messages=messages,
@@ -152,10 +159,17 @@ class OpenAILLM:
     """OpenAI Responses API: parse() cho structured output, create() cho text, stream() cho streaming."""
 
     def __init__(self, settings: Settings, client=None):
-        import openai
-
         self.settings = settings
-        self.client = client or openai.AsyncOpenAI(api_key=settings.openai_api_key)
+        self._client = client
+
+    @property
+    def client(self):
+        # Tạo khi gọi lần đầu: thiếu key thì lỗi lúc gọi LLM, không chặn API khởi động
+        if self._client is None:
+            import openai
+
+            self._client = openai.AsyncOpenAI(api_key=self.settings.openai_api_key)
+        return self._client
 
     @staticmethod
     def _input(messages: list[dict]) -> list[dict]:

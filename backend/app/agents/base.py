@@ -11,7 +11,7 @@ from uuid import UUID
 
 AgentName = Literal["orchestrator", "tutor", "knowledge", "vision", "document", "assessment", "student_model"]
 AGENT_NAMES: tuple[str, ...] = AgentName.__args__
-Mode = Literal["chat", "quiz", "ingestion"]
+Mode = Literal["chat", "quiz", "teach", "ingestion"]
 
 
 class AgentContractError(Exception):
@@ -26,6 +26,21 @@ class ChatMessage:
 
 
 @dataclass(frozen=True)
+class Evidence:
+    """Một đoạn SGK (chữ hoặc mô tả hình) mà agent trước tìm được và chuyển cho agent sau."""
+    chunk_id: int
+    kind: Literal["text", "figure"]
+    page: int
+    content: str
+    review: Literal["pending", "approved"] | None = None  # chỉ với hình
+    lesson_title: str | None = None
+
+    @property
+    def unreviewed(self) -> bool:
+        return self.kind == "figure" and self.review == "pending"
+
+
+@dataclass(frozen=True)
 class TurnContext:
     mode: Mode
     language: Literal["vi", "ja"] = "vi"
@@ -37,6 +52,7 @@ class TurnContext:
     text: str | None = None          # câu hỏi / nội dung đầu vào
     object_key: str | None = None    # ảnh hoặc tài liệu trong object storage
     history: tuple[ChatMessage, ...] = ()  # tin gần nhất, theo thứ tự thời gian
+    evidence: tuple[Evidence, ...] = ()    # đoạn SGK do Knowledge/Vision chuyển tiếp
 
     def __post_init__(self):
         if self.mode == "ingestion":
@@ -123,6 +139,20 @@ class Registry:
         if agent.name in self._agents:
             raise AgentContractError(f"agent {agent.name!r} is already registered")
         self._agents[agent.name] = agent
+
+    def replace_stub(self, agent: Agent) -> None:
+        """Thay agent tạm (StubAgent) bằng bản thật; thay một agent thật vẫn là lỗi."""
+        current = self._agents.get(agent.name)
+        if current is None:
+            raise AgentContractError(f"missing agent implementations: {agent.name}")
+        if not isinstance(current, StubAgent):
+            raise AgentContractError(f"agent {agent.name!r} is already registered")
+        self._agents[agent.name] = agent
+
+    def copy(self) -> "Registry":
+        clone = Registry()
+        clone._agents = dict(self._agents)
+        return clone
 
     def get(self, name: str) -> Agent:
         return self._agents[name]

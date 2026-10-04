@@ -24,8 +24,8 @@ INSERT INTO documents (id, kind, title, subject, grade, storage_key) VALUES
 INSERT INTO lessons (id, document_id, position, title, page_start, page_end) VALUES
  ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000d1', 1, 'Hàm số bậc nhất', 45, 50);
 INSERT INTO chunks (document_id, lesson_id, page, kind, content, embedding, image_key, review) VALUES
- ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000e1', 45, 'text', 'Hàm số y = ax + b (a ≠ 0)…', array_fill(0.1, ARRAY[1536])::vector, NULL, NULL),
- ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000e1', 46, 'figure', 'Đồ thị y = 2x + 1 là đường thẳng…', array_fill(0.2, ARRAY[1536])::vector, 'fig/toan8-46.png', 'pending');
+ ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000e1', 45, 'text', 'Hàm số y = ax + b (a ≠ 0)…', array_fill(0.1, ARRAY[1024])::vector, NULL, NULL),
+ ('00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0000-0000000000e1', 46, 'figure', 'Đồ thị y = 2x + 1 là đường thẳng…', array_fill(0.2, ARRAY[1024])::vector, 'fig/toan8-46.png', 'pending');
 UPDATE chunks SET review = 'approved', reviewed_by = '00000000-0000-0000-0000-000000000001', reviewed_at = now() WHERE kind = 'figure';
 INSERT INTO learning_sessions (id, student_id, lesson_id) VALUES
  ('00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-0000000000e1');
@@ -46,7 +46,7 @@ DECLARE m record;
 BEGIN
   SELECT * INTO m FROM lesson_mastery;
   ASSERT m.mastery = 0.50 AND m.concept_mastery = 1.00 AND m.figure_mastery = 0.00, 'lesson_mastery sai';
-  ASSERT (SELECT kind FROM chunks ORDER BY embedding <=> array_fill(0.2, ARRAY[1536])::vector LIMIT 1) IS NOT NULL, 'tìm kiếm vector lỗi';
+  ASSERT (SELECT kind FROM chunks ORDER BY embedding <=> array_fill(0.2, ARRAY[1024])::vector LIMIT 1) IS NOT NULL, 'tìm kiếm vector lỗi';
 END $$;
 
 -- Những dữ liệu sai database phải từ chối
@@ -59,8 +59,8 @@ SELECT pg_temp.must_fail($$INSERT INTO quizzes (student_id, lesson_id) VALUES ('
 SELECT pg_temp.must_fail($$INSERT INTO documents (kind, title, subject, grade, storage_key, uploaded_by) VALUES ('textbook', 'x', 'toan', 8, 'k1', '00000000-0000-0000-0000-000000000001')$$);
 SELECT pg_temp.must_fail($$INSERT INTO documents (kind, title, subject, grade, storage_key) VALUES ('upload', 'x', 'toan', 8, 'k2')$$);
 SELECT pg_temp.must_fail($$INSERT INTO lessons (document_id, position, title, page_start, page_end) VALUES ('00000000-0000-0000-0000-0000000000d1', 2, 'x', 10, 5)$$);
-SELECT pg_temp.must_fail($$INSERT INTO chunks (document_id, page, kind, content, embedding) VALUES ('00000000-0000-0000-0000-0000000000d1', 1, 'figure', 'hình thiếu ảnh', array_fill(0.1, ARRAY[1536])::vector)$$);
-SELECT pg_temp.must_fail($$INSERT INTO chunks (document_id, page, kind, content, embedding, review) VALUES ('00000000-0000-0000-0000-0000000000d1', 1, 'text', 'văn bản không cần duyệt', array_fill(0.1, ARRAY[1536])::vector, 'pending')$$);
+SELECT pg_temp.must_fail($$INSERT INTO chunks (document_id, page, kind, content, embedding) VALUES ('00000000-0000-0000-0000-0000000000d1', 1, 'figure', 'hình thiếu ảnh', array_fill(0.1, ARRAY[1024])::vector)$$);
+SELECT pg_temp.must_fail($$INSERT INTO chunks (document_id, page, kind, content, embedding, review) VALUES ('00000000-0000-0000-0000-0000000000d1', 1, 'text', 'văn bản không cần duyệt', array_fill(0.1, ARRAY[1024])::vector, 'pending')$$);
 SELECT pg_temp.must_fail($$UPDATE chunks SET reviewed_at = NULL WHERE kind = 'figure'$$);
 SELECT pg_temp.must_fail($$INSERT INTO chunks (document_id, page, kind, content, embedding) VALUES ('00000000-0000-0000-0000-0000000000d1', 1, 'text', 'sai số chiều', array_fill(0.1, ARRAY[768])::vector)$$);
 SELECT pg_temp.must_fail($$INSERT INTO messages (session_id, role, content) VALUES ('00000000-0000-0000-0000-0000000000f1', 'assistant', 'thiếu agent')$$);

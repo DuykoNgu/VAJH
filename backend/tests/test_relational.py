@@ -16,8 +16,8 @@ async def test_vector_query_repeated_through_pool(pool, db):
                      " VALUES ('textbook', 'T', 'toan', 8, 'k') RETURNING id").fetchone()[0]
     for i, val in enumerate([0.1, 0.5, 0.9]):
         db.execute("INSERT INTO chunks (document_id, page, kind, content, embedding)"
-                   " VALUES (%s, 1, 'text', %s, array_fill(%s::real, ARRAY[1536])::vector)", (doc, f"c{i}", val))
-    query = Vector([0.9] * 1535 + [0.1])
+                   " VALUES (%s, 1, 'text', %s, array_fill(%s::real, ARRAY[1024])::vector)", (doc, f"c{i}", val))
+    query = Vector([0.9] * 1023 + [0.1])
     for _ in range(20):  # nhiều lần liên tiếp: không lỗi prepared statement
         async with relational.connection() as conn:
             rows = await (await conn.execute(

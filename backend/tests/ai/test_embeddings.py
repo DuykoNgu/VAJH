@@ -1,40 +1,34 @@
-import json
-
-import httpx2
-import openai
+import numpy as np
 import pytest
 
-from app.ai.embeddings import EmbeddingDimensionError, OpenAIEmbeddings
+from app.ai.embeddings import EmbeddingDimensionError, LocalEmbeddings
 from app.config import get_settings
 
 
-def embeddings_with(dim, calls):
-    def handler(request):
-        inputs = json.loads(request.content)["input"]
-        calls.append(len(inputs))
-        # trả ngược thứ tự để kiểm tra client sắp xếp lại theo index
-        data = [{"object": "embedding", "index": i, "embedding": [float(i)] * dim} for i in range(len(inputs))][::-1]
-        return httpx2.Response(200, json={"object": "list", "data": data, "model": "m",
-                                          "usage": {"prompt_tokens": 1, "total_tokens": 1}})
+class StubModel:
+    """Thay SentenceTransformer: vector thứ i = [i, i, ...]."""
 
-    client = openai.AsyncOpenAI(api_key="k", http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)))
-    return OpenAIEmbeddings(get_settings(), client=client)
+    def __init__(self, dim):
+        self.dim = dim
+        self.calls = []
+
+    def encode(self, texts, batch_size, normalize_embeddings):
+        self.calls.append((len(texts), normalize_embeddings))
+        return np.array([[float(i)] * self.dim for i in range(len(texts))], dtype=np.float32)
 
 
 async def test_batch_returns_one_vector_per_text_in_order():
-    calls = []
-    vectors = await embeddings_with(1536, calls).embed(["a", "b", "c"])
-    assert [len(v) for v in vectors] == [1536] * 3
+    model = StubModel(1024)
+    vectors = await LocalEmbeddings(get_settings(), model=model).embed(["a", "b", "c"])
+    assert [len(v) for v in vectors] == [1024] * 3
     assert [v[0] for v in vectors] == [0.0, 1.0, 2.0]
-    assert calls == [3]
-
-
-async def test_large_input_is_split_into_batches():
-    calls = []
-    vectors = await embeddings_with(1536, calls).embed([str(i) for i in range(300)])
-    assert len(vectors) == 300 and calls == [256, 44]
+    assert model.calls == [(3, True)]
 
 
 async def test_wrong_dimension_fails_with_expected_and_actual():
-    with pytest.raises(EmbeddingDimensionError, match="1536.*768"):
-        await embeddings_with(768, []).embed(["a"])
+    with pytest.raises(EmbeddingDimensionError, match="1024.*768"):
+        await LocalEmbeddings(get_settings(), model=StubModel(768)).embed(["a"])
+
+
+def test_default_model_is_vietnamese_embedding_v2():
+    assert get_settings().embedding_model == "AITeamVN/Vietnamese_Embedding_v2"

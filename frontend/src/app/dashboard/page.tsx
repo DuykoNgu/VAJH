@@ -1,8 +1,8 @@
-// Teacher Dashboard: theo dõi tiến độ, phát hiện điểm yếu, gợi ý can thiệp.
+// Teacher Dashboard: theo dõi tiến độ, phát hiện điểm yếu, duyệt mô tả hình.
+import DashboardApp from "./dashboard-app";
+
+export const metadata = { title: "LUSIA — Teacher Dashboard" };
+
 export default function DashboardPage() {
-  return (
-    <main className="p-6">
-      <h1 className="text-3xl font-bold">Teacher Dashboard</h1>
-    </main>
-  );
+  return <DashboardApp />;
 }

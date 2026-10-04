@@ -64,7 +64,7 @@ class FakeEmbeddings:
 
 
 def fake_vector(text: str) -> list[float]:
-    """Vector đơn vị 1536 chiều, cùng text → cùng vector."""
+    """Vector đơn vị EMBEDDING_DIM chiều, cùng text → cùng vector."""
     rng = random.Random(hashlib.sha256(text.encode()).digest())
     v = [rng.gauss(0, 1) for _ in range(EMBEDDING_DIM)]
     norm = math.sqrt(sum(x * x for x in v))

@@ -5,8 +5,11 @@
 import asyncio
 import logging
 import sys
+from pathlib import Path
 
 from pydantic import BaseModel
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # chạy được bằng `python spikes/<file>.py`
 
 from app.ai.llm import LLMResult, make_llm
 from app.config import get_settings

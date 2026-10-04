@@ -8,7 +8,7 @@ BASE = {"DATABASE_URL": "postgresql://x@localhost/db", "REDIS_URL": "redis://loc
 @pytest.fixture
 def env(monkeypatch):
     for name in ["DATABASE_URL", "REDIS_URL", "APP_ENV", "AUTH_MODE", "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
-                 "LLM_PROVIDER", "EMBEDDING_PROVIDER", "OPENAI_LLM_MODEL", "LLM_ROUTES"]:
+                 "LLM_PROVIDER", "EMBEDDING_PROVIDER", "OPENAI_LLM_MODEL", "LLM_ROUTES", "FILES_DIR"]:
         monkeypatch.delenv(name, raising=False)
 
     def set_env(**values):
@@ -77,3 +77,13 @@ def test_route_override(env, monkeypatch):
     s = env(**BASE, APP_ENV="test")
     assert s.llm_routes["orchestrator"].model == "other-model"
     assert s.llm_routes["tutor"].model == "claude-opus-5-5" and s.llm_routes["tutor"].effort == "medium"
+
+
+def test_ingestion_defaults_and_relative_files_dir(env):
+    from app.config import BACKEND_DIR
+
+    s = env(**BASE, APP_ENV="test", FILES_DIR="data/x")
+    assert s.files_dir == BACKEND_DIR / "data" / "x"
+    assert (s.file_store, s.max_upload_mb, s.max_pages, s.chunk_max_chars, s.chunk_overlap_chars) == \
+        ("local", 50, 400, 1500, 200)
+    assert (s.figure_min_area_ratio, s.llm_concurrency, s.ingest_timeout_s) == (0.02, 4, 3600)

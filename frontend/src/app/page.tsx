@@ -12,6 +12,9 @@ export default function Home() {
         <Link href="/dashboard" className="rounded-lg border-2 p-4 focus:outline-4">
           👩‍🏫 Giáo viên – Teacher Dashboard
         </Link>
+        <Link href="/curation" className="rounded-lg border-2 p-4 focus:outline-4">
+          📚 Giáo viên – Kiểm duyệt nội dung
+        </Link>
       </nav>
     </main>
   );

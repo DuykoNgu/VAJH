@@ -225,6 +225,46 @@ flowchart LR
 
 ---
 
+### ▶️ Chạy demo (MVP)
+
+Trên một laptop, dùng **Google Chrome** (nhận giọng nói tiếng Việt qua Web Speech API; cần Internet).
+
+```bash
+docker compose up -d                                   # Postgres + Redis
+cd backend && source .venv/bin/activate
+python -m app.migrate && python -m app.seed            # schema + giáo viên colan, lớp 8A, học sinh minh8a
+python -m app.voice.tts --download                     # model giọng đọc ZeroTTS (~900 MB, một lần)
+python -m app.ingest ~/Downloads/toan8.pdf --title "Toán 8 tập 2" --subject toan --grade 8
+# (trong backend/.env: OPENAI_API_KEY và OPENAI_LLM_MODEL)
+uvicorn app.main:app --port 8000                       # đợi ~20 giây để nạp sẵn model giọng đọc + embedding
+cd ../frontend && npm run dev                          # mở http://localhost:3000/learn
+```
+
+> Nếu cổng 3000 đang bận, Next.js chạy ở 3001: thêm cổng đó cho backend bằng `FRONTEND_ORIGINS="http://localhost:3000,http://localhost:3001"`.
+
+**Lời thoại demo** (học sinh không cần nhìn màn hình, không cần tìm nút nào):
+
+1. Mở `/learn`, nhấn **phím bất kỳ** → LUSIA chào và đọc danh sách bài.
+2. Giữ **phím cách**, nói *“bài hai”* (hoặc mũi tên xuống + Enter) → LUSIA **giảng ngay phần 1** rồi hỏi một câu kiểm tra.
+3. Trả lời bằng giọng nói → LUSIA chấm (đúng / đúng một phần / chưa đúng, giảng lại nếu cần) → nói *“tiếp”*.
+4. Phần có hình: **Vision** mô tả đồ thị (kèm *“Mô tả hình này chưa được thầy cô kiểm duyệt.”*), Tutor giảng, rồi hỏi tiếp. Màn hình hiện **Orchestrator → Vision → Tutor → Assessment**.
+5. Hỏi chen bất cứ lúc nào: *“Trục tung là trục nào?”* → LUSIA trả lời rồi nhắc lại câu hỏi đang chờ.
+6. Hết bài: LUSIA tóm tắt và mời *“kiểm tra mình”* → 3 câu trắc nghiệm bằng giọng nói → điểm.
+7. Mở `/dashboard`: lớp 8A hiện **Hiểu bài / Hiểu hình** (gồm cả câu kiểm tra từng phần) và chỗ **Yếu**; duyệt mô tả hình → học lại phần hình, không còn câu cảnh báo.
+
+Phím ở mọi nơi: **Space** giữ để nói · **Esc** dừng · **R** nghe lại · **H** trợ giúp. Lệnh nói: *nhắc lại, dừng, đổi bài, chậm lại, nhanh lên, trợ giúp, tiếp, kiểm tra mình*.
+
+> Máy có ứng dụng khác chiếm cổng 8000/3000? Chạy API ở cổng khác (`uvicorn app.main:app --port 8010`) và frontend với `NEXT_PUBLIC_API_URL=http://localhost:8010 npm run dev -- --port 3001`, thêm `FRONTEND_ORIGINS="http://localhost:3001"` cho backend.
+
+Đặt lại dữ liệu demo giữa các lần tập (xóa kết quả quiz, đưa hình về chờ duyệt):
+
+```bash
+docker exec -i lusia-postgres psql -U lusia -d lusia_db -c "DELETE FROM learning_sessions; DELETE FROM quizzes;" \
+  -c "UPDATE chunks SET review='pending', reviewed_by=NULL, reviewed_at=NULL WHERE kind='figure';"
+```
+
+---
+
 ## 🛠️ Công nghệ & Ngăn xếp kỹ thuật (Tech Stack)
 
 - **AI & Multi-Agent Core**: LLM (Gemini, Claude, GPT), Agent Frameworks (LangChain, LangGraph), RAG Pipeline.
@@ -300,7 +340,7 @@ erDiagram
 | Nhóm | Bảng | Ghi chú |
 | :--- | :--- | :--- |
 | Người dùng | `users`, `students`, `teachers`, `classes`, `class_students` | **Hiện chưa có đăng nhập** (danh tính dev, xem Getting Started); giai đoạn 12 thêm đăng nhập: học sinh `username` + mã PIN 6 số do giáo viên cấp (**đọc bằng giọng nói** hoặc nhờ người khác gõ hộ), giáo viên dùng mật khẩu. Vai trò = có dòng trong `students` / `teachers`, nên database tự chặn gán nhầm vai trò. |
-| Học liệu & RAG | `documents`, `lessons`, `chunks` | `chunks` chứa đoạn SGK và **mô tả hình** do Vision Agent viết, kèm embedding (`vector(1536)`). Mô tả hình phải được **giáo viên duyệt** (Human Oversight). |
+| Học liệu & RAG | `documents`, `lessons`, `chunks` | `chunks` chứa đoạn SGK và **mô tả hình** do Vision Agent viết, kèm embedding (`vector(1024)`, model `AITeamVN/Vietnamese_Embedding_v2`). Mô tả hình phải được **giáo viên duyệt** (Human Oversight). |
 | Hội thoại | `learning_sessions`, `messages` | Chỉ lưu transcript, **không lưu audio gốc** (bảo vệ quyền riêng tư của trẻ). Mỗi câu trả lời ghi rõ agent nào trả lời. |
 | Đánh giá | `quizzes`, `questions`, `answers` | Điểm từ 0–1 (tự luận chấm từng phần). Mỗi câu hỏi đánh dấu `focus`: về **kiến thức** hay về **hình vẽ**. |
 | Student Model | view `lesson_mastery` | Mức nắm bài theo từng bài, tách `concept_mastery` / `figure_mastery` → giáo viên biết học sinh hổng vì không hiểu bài hay vì không hình dung được hình. |
@@ -424,6 +464,28 @@ Quy ước để thêm đăng nhập sau này **không phải viết lại** ser
 - Chỉ `app/identity.py` được biết về danh tính dev (có test kiểm tra). Endpoint lấy người dùng qua `current_student` / `current_teacher` / `current_user` rồi truyền **id tường minh** xuống service, agent, job.
 - Cột chủ sở hữu (`learning_sessions.student_id`, `documents.uploaded_by`, `chunks.reviewed_by`…) luôn lấy từ người dùng hiện tại, không bao giờ từ body request.
 - Chỗ nào sau này cần kiểm tra quyền thì ghi chú `# authz-later: <điều kiện>` (vd. `# authz-later: teacher must own class`) — giai đoạn 12 sẽ `grep -rn "authz-later"` để xử lý hết.
+
+#### Nạp tài liệu học tập (SGK, phiếu học tập)
+
+PDF được đọc → chia **bài học** → cắt **đoạn văn** (chunk) → tìm **hình** và mô tả bằng lời cho học sinh khiếm thị → tạo embedding → lưu vào `chunks`. Trang không có lớp chữ (bản scan, lỗi font TCVN3/VNI) được LLM đọc thay. Mô tả hình ở trạng thái **chờ giáo viên duyệt** (`review = pending`).
+
+```bash
+# SGK chính thức (không cần danh tính, chạy ngay trong lệnh, không cần worker). KHÔNG commit PDF SGK (bản quyền).
+python -m app.ingest ~/Downloads/toan8-tap2.pdf --title "Toán 8 tập 2" --subject toan --grade 8
+
+# Học sinh / giáo viên tải lên (xử lý nền → cần worker đang chạy)
+curl -s -H "X-Dev-User: minh8a" -F "file=@phieu.pdf" -F title="Phiếu học tập" -F subject=toan -F grade=8 \
+     localhost:8000/documents                                   # → 202 {"id": ..., "status": "processing"}
+curl -s localhost:8000/documents/<id>                         # status, page_count, processed_pages, error, số chunk/hình
+curl -s localhost:8000/documents/<id>/lessons                 # danh sách bài học
+curl -s localhost:8000/figures/<chunk_id>/image -o hinh.png   # ảnh của một hình
+```
+
+- **Trạng thái:** `processing` → `ready` hoặc `failed` (kèm `error` dạng `"<bước>: <lỗi>"`). Lỗi tạm thời (LLM) được thử lại 3 lần; PDF hỏng thì báo lỗi ngay.
+- **Sửa bài học** (giáo viên): `PUT /documents/<id>/lessons` với danh sách `{id?, title, page_start, page_end}` → chunk được dựng lại. Không xóa được bài đã có kết quả quiz (409). `POST /documents/<id>/reprocess` để xử lý lại.
+- **File lưu ở** `FILES_DIR` (mặc định `backend/data/files`, trong Docker là volume `lusia_files_data`) cho tới khi có S3.
+- **Chi phí:** mỗi trang phải OCR và mỗi hình mô tả = 1 lần gọi LLM; lệnh `app.ingest` in tổng số trang OCR / hình / hình bị bỏ qua. Model embedding chạy local (~2,3 GB, tải lần đầu).
+- Giới hạn: `MAX_UPLOAD_MB` (50), `MAX_PAGES` (400); chỉnh ngưỡng cắt đoạn/hình trong `backend/.env` (xem `.env.example`).
 
 #### Background worker & test
 

@@ -1,14 +1,19 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import jobs
-from app.agents import base as agents
-from app.api import chat, health, me, teacher
+from app.ai.embeddings import make_embeddings, warm_up
+from app.ai.llm import make_llm
+from app.ai.speech import make_tts
+from app.api import chat, curation, documents, health, me, teacher, tts
 from app.config import Settings, get_settings
 from app.identity import DEV_USER_HEADER, make_identity_provider
+from app.learning import build_agents
 from app.storage import cache, relational
+from app.storage.files import make_file_store
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -16,19 +21,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        agents.registry.assert_complete()  # cả 7 agent phải có (stub hoặc thật)
+        app.state.agents = build_agents(app.state.llm, app.state.embeddings)  # đủ 7 agent, thay stub bằng bản thật
         await relational.open_pool(settings.database_url)
         cache.open_redis(settings.redis_url)
         jobs.configure_queue(settings.redis_url)
+        warm = getattr(app.state.tts, "warm_up", None)
+        # Nạp nền model TTS và embedding: câu hỏi đầu tiên của học sinh không phải chờ
+        warming = asyncio.gather(warm() if warm else asyncio.sleep(0), warm_up(app.state.embeddings))
         try:
             yield
         finally:
+            if warming:
+                warming.cancel()
             await jobs.close_queue()
             await cache.close_redis()
             await relational.close_pool()
 
     app = FastAPI(title="LUSIA API", lifespan=lifespan)
+    app.state.settings = settings
     app.state.identity_provider = make_identity_provider(settings)
+    app.state.files = make_file_store(settings)
+    app.state.llm = make_llm(settings)
+    app.state.embeddings = make_embeddings(settings)
+    app.state.tts = make_tts(settings)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.origins,
@@ -37,8 +52,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.include_router(health.router)
     app.include_router(me.router)
+    app.include_router(documents.router)
+    app.include_router(tts.router)
     app.include_router(chat.router)
     app.include_router(teacher.router)
+    app.include_router(curation.router)
     return app
 
 

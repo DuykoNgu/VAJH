@@ -20,7 +20,7 @@ def test_test_settings_select_fakes():
 
 async def test_stable_fake_embedding():
     a, b = await FakeEmbeddings().embed(["Hàm số bậc nhất", "Hàm số bậc nhất"])
-    assert a == b and len(a) == 1536
+    assert a == b and len(a) == 1024
     (c,) = await FakeEmbeddings().embed(["khác"])
     assert c != a
 

@@ -4,7 +4,7 @@ import type { components } from "./api-types";
 export type Me = components["schemas"]["Me"];
 
 // NEXT_PUBLIC_* được gắn cứng lúc build (next build) - phải viết đúng tên, không tra động
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // Danh tính dev (tới giai đoạn 12): người dùng được chọn lưu ở localStorage, gửi qua header.
 // Giai đoạn 12 (authentication): bỏ header này, chuyển sang cookie (credentials: "include").

@@ -1,0 +1,73 @@
+"""Nạp sách giáo khoa (không cần danh tính):
+
+    python -m app.ingest sgk/toan8-tap2.pdf --title "Toán 8 tập 2" --subject toan --grade 8
+
+Xử lý ngay trong tiến trình (không cần worker) rồi in tóm tắt. PDF SGK không commit vào repo (bản quyền).
+"""
+import argparse
+import asyncio
+import sys
+import uuid
+from pathlib import Path
+
+from app.config import get_settings
+from app.ingestion.pdf import PdfError, open_pdf
+from app.ingestion.pipeline import Deps, IngestionError, mark_failed, process_document
+from app.storage import relational
+
+SUBJECTS = ["toan", "ngu_van", "tieng_viet", "tieng_anh", "khtn", "vat_ly", "hoa_hoc", "sinh_hoc", "lich_su",
+            "dia_ly", "lich_su_dia_ly", "tin_hoc", "khac"]  # khớp enum `subject` trong migrations/000_init.sql
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(prog="python -m app.ingest", description="Nạp một sách giáo khoa PDF")
+    parser.add_argument("file", type=Path)
+    parser.add_argument("--title", required=True)
+    parser.add_argument("--subject", required=True, choices=SUBJECTS)
+    parser.add_argument("--grade", required=True, type=int, choices=range(1, 13), metavar="1-12")
+    return parser.parse_args(argv)
+
+
+async def run(args, deps: Deps) -> int:
+    data = args.file.read_bytes()
+    try:
+        open_pdf(data, deps.settings.max_pages).close()
+    except PdfError as e:
+        print(f"ERROR: {args.file}: {e}", file=sys.stderr)
+        return 1
+    doc_id = uuid.uuid4()
+    key = f"sgk/{doc_id}.pdf"
+    await deps.files.put(key, data, "application/pdf")
+    async with relational.connection() as conn:
+        await conn.execute("INSERT INTO documents (id, kind, title, subject, grade, storage_key)"
+                           " VALUES (%s, 'textbook', %s, %s, %s, %s)",
+                           (doc_id, args.title, args.subject, args.grade, key))
+    print(f"document {doc_id}: processing {args.file.name} ...")
+    try:
+        s = await process_document(doc_id, deps)
+    except IngestionError as e:
+        await mark_failed(doc_id, str(e))
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    print(f"document {doc_id}: ready\n"
+          f"  pages {s.pages} (OCR {s.ocr_pages}) | lessons {s.lessons} (from {s.lesson_source})\n"
+          f"  text chunks {s.text_chunks} | figure chunks {s.figure_chunks} (pending review) | "
+          f"skipped figures {s.skipped_figures} | decorative {s.decorative_figures}")
+    return 0
+
+
+async def main(argv=None) -> int:
+    args = parse_args(argv)
+    if not args.file.is_file():
+        print(f"ERROR: {args.file} not found", file=sys.stderr)
+        return 1
+    settings = get_settings()
+    await relational.open_pool(settings.database_url)
+    try:
+        return await run(args, Deps.from_settings(settings))
+    finally:
+        await relational.close_pool()
+
+
+if __name__ == "__main__":
+    sys.exit(asyncio.run(main()))

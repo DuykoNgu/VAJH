@@ -55,29 +55,47 @@ class Settings(BaseSettings):
 
     frontend_origins: str = "http://localhost:3000"
 
+    # Nạp tài liệu (document-ingestion). File lưu trên đĩa cho tới khi có S3 (foundations task 3.3)
+    file_store: Literal["local"] = "local"
+    files_dir: Path = BACKEND_DIR / "data" / "files"
+    max_upload_mb: int = 50
+    max_pages: int = 400
+    chunk_max_chars: int = 1500
+    chunk_overlap_chars: int = 200
+    figure_min_area_ratio: float = 0.02
+    llm_concurrency: int = 4
+    ingest_timeout_s: int = 3600
+
     llm_provider: Literal["openai", "anthropic", "fake"] | None = None
-    embedding_provider: Literal["openai", "fake"] | None = None
+    embedding_provider: Literal["local", "fake"] | None = None
     stt_provider: Literal["fake"] = "fake"
-    tts_provider: Literal["fake"] = "fake"
+    tts_provider: Literal["zerotts", "fake"] | None = None
+    zerotts_model_dir: Path = BACKEND_DIR / "data" / "models" / "zerotts"
+    zerotts_voice: str = "maichi"
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
     openai_llm_model: str | None = None
-    embedding_model: str = "text-embedding-3-small"
+    embedding_model: str = "AITeamVN/Vietnamese_Embedding_v2"
     # Chỉ ghi các route muốn đổi; phần còn lại giữ mặc định
     llm_routes: dict[str, Route] = {}
 
     @model_validator(mode="after")
     def _defaults_and_production_keys(self):
+        if not self.zerotts_model_dir.is_absolute():
+            self.zerotts_model_dir = BACKEND_DIR / self.zerotts_model_dir
+        if not self.files_dir.is_absolute():  # đường dẫn tương đối tính từ backend/, không phụ thuộc thư mục đang chạy
+            self.files_dir = BACKEND_DIR / self.files_dir
         test = self.app_env == "test"
         self.llm_provider = self.llm_provider or ("fake" if test else "openai")
         self.llm_routes = {**default_routes(self.llm_provider, self.openai_llm_model), **self.llm_routes}
-        self.embedding_provider = self.embedding_provider or ("fake" if test else "openai")
+        self.embedding_provider = self.embedding_provider or ("fake" if test else "local")
+        self.tts_provider = self.tts_provider or ("fake" if test else "zerotts")
         if self.app_env == "production":
             missing = [
                 name
                 for name, needed, value in [
                     ("ANTHROPIC_API_KEY", self.llm_provider == "anthropic", self.anthropic_api_key),
-                    ("OPENAI_API_KEY", "openai" in (self.llm_provider, self.embedding_provider), self.openai_api_key),
+                    ("OPENAI_API_KEY", self.llm_provider == "openai", self.openai_api_key),
                     ("OPENAI_LLM_MODEL", self.llm_provider == "openai"
                      and any(not r.model for r in self.llm_routes.values()), self.openai_llm_model),
                 ]

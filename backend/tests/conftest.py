@@ -114,3 +114,38 @@ def override_identity(app, user: UserContext) -> None:
     """Bỏ qua provider: mọi dependency danh tính trả về `user` (dùng cho test service/endpoint)."""
     for dep in (current_user, current_student, current_teacher):
         app.dependency_overrides[dep] = lambda user=user: user
+
+
+# ---------- Nội dung SGK mẫu trong DB (bài 1: chữ; bài 2: chữ + một hình chờ duyệt) ----------
+GRAPH_DESCRIPTION = "Đồ thị hàm số y bằng hai x cộng một là đường thẳng đi lên, cắt trục tung tại điểm một."
+
+
+@pytest.fixture
+def textbook(db):
+    import uuid as _uuid
+
+    from app.ai.fakes import fake_vector
+
+    doc = _uuid.uuid4()
+    db.execute("INSERT INTO documents (id, kind, title, subject, grade, storage_key, status, published_at) VALUES"
+               " (%s, 'textbook', 'Toán 8', 'toan', 8, %s, 'ready', now())", (doc, f"sgk/{doc}.pdf"))
+    lessons = {}
+    for pos, title in enumerate(["Bài 1. Hàm số bậc nhất", "Bài 2. Đồ thị của hàm số bậc nhất"], 1):
+        lessons[pos] = db.execute("INSERT INTO lessons (document_id, position, title, page_start, page_end)"
+                                  " VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                                  (doc, pos, title, pos * 2, pos * 2 + 1)).fetchone()[0]
+
+    def add(lesson, content, kind="text", review=None, page=2):
+        return db.execute(
+            "INSERT INTO chunks (document_id, lesson_id, page, kind, content, embedding, image_key, review, reviewed_at)"
+            " VALUES (%s, %s, %s, %s, %s, %s::vector, %s, %s, %s) RETURNING id",
+            (doc, lessons[lesson], page, kind, content, str(fake_vector(content)),
+             f"fig/{doc}/r/{page}-1.png" if kind == "figure" else None, review,
+             None if review in (None, "pending") else "2026-10-04")).fetchone()[0]
+
+    chunks = {
+        "concept": add(1, "Hàm số bậc nhất là hàm số y = ax + b với a khác 0.", page=2),
+        "graph_text": add(2, "Đồ thị của hàm số y = ax + b là một đường thẳng.", page=4),
+        "figure": add(2, GRAPH_DESCRIPTION, kind="figure", review="pending", page=5),
+    }
+    return {"document": doc, "lessons": lessons, "chunks": chunks, "add": add}

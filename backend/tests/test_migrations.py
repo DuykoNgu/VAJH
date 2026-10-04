@@ -25,7 +25,7 @@ def recorded(url):
         return [r[0] for r in conn.execute("SELECT filename FROM schema_migrations ORDER BY 1")]
 
 
-ALL = ["000_init", "001_student_language_agent_name"]
+ALL = ["000_init", "001_student_language_agent_name", "002_embedding_1024", "003_document_processing", "004_document_publishing"]
 
 
 def test_fresh_database_applies_and_records_every_file(scratch_url):
@@ -41,9 +41,9 @@ def test_rerun_is_a_noop(scratch_url):
 def test_failing_migration_is_atomic_and_stops(scratch_url, tmp_path):
     for f in MIGRATIONS_DIR.glob("*.sql"):
         shutil.copy(f, tmp_path)
-    (tmp_path / "002_bad.sql").write_text("CREATE TABLE half_done (id int);\nSELECT * FROM no_such_table;")
-    (tmp_path / "003_after.sql").write_text("CREATE TABLE after_bad (id int);")
-    with pytest.raises(MigrationError, match="002_bad.sql"):
+    (tmp_path / "900_bad.sql").write_text("CREATE TABLE half_done (id int);\nSELECT * FROM no_such_table;")
+    (tmp_path / "901_after.sql").write_text("CREATE TABLE after_bad (id int);")
+    with pytest.raises(MigrationError, match="900_bad.sql"):
         migrate(scratch_url, directory=tmp_path)
     assert recorded(scratch_url) == ALL
     with psycopg.connect(scratch_url) as conn:
@@ -73,7 +73,7 @@ def test_baseline_adopts_schema_sql_database(scratch_url):
     with psycopg.connect(scratch_url, autocommit=True) as conn:  # DB tạo trực tiếp từ schema.sql cũ
         conn.execute((MIGRATIONS_DIR / "000_init.sql").read_text())
     assert migrate(scratch_url, baseline=["000_init"]) == ["000_init"]
-    assert migrate(scratch_url) == ["001_student_language_agent_name"]
+    assert migrate(scratch_url) == ALL[1:]
 
 
 def test_baseline_rejects_unknown_name(scratch_url):
@@ -107,3 +107,18 @@ def test_student_model_agent_message_accepted(db):
     sid = db.execute("INSERT INTO learning_sessions (student_id) VALUES (%s) RETURNING id", (uid,)).fetchone()[0]
     db.execute("INSERT INTO messages (session_id, role, agent, content) VALUES (%s, 'assistant', 'student_model', 'x')",
                (sid,))
+
+
+def add_document(db, status="processing", error=None):
+    return db.execute("INSERT INTO documents (kind, title, subject, grade, storage_key, status, error)"
+                      " VALUES ('textbook', 'T', 'toan', 8, %s, %s, %s) RETURNING id",
+                      (f"sgk/{status}-{error}.pdf", status, error)).fetchone()[0]
+
+
+def test_failed_iff_error(db):
+    add_document(db, "failed", "parse: broken")
+    add_document(db, "ready")
+    with pytest.raises(psycopg.errors.CheckViolation):
+        add_document(db, "failed", None)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        add_document(db, "ready", "leftover error")

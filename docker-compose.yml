@@ -71,6 +71,7 @@ services:
       DATABASE_URL: postgresql://lusia:lusia@postgres:5432/lusia_db
       DATABASE_URL_UNPOOLED: postgresql://lusia:lusia@postgres:5432/lusia_db
       REDIS_URL: redis://redis:6379
+      FILES_DIR: /data/files   # PDF + ảnh hình; api và worker phải thấy cùng một thư mục
     env_file:
       - path: ./backend/.env
         required: false
@@ -93,6 +94,8 @@ services:
     volumes:
       - ./backend/app:/app/app
       - ./backend/migrations:/app/migrations
+      - hf_cache:/root/.cache/huggingface  # model embedding, tải 1 lần dùng chung api/worker
+      - files_data:/data/files
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -111,6 +114,8 @@ services:
         required: false
     volumes:
       - ./backend/app:/app/app
+      - hf_cache:/root/.cache/huggingface
+      - files_data:/data/files
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -127,6 +132,10 @@ volumes:
     name: lusia_redis_data
   postgres_data:
     name: lusia_postgres_data
+  hf_cache:
+    name: lusia_hf_cache
+  files_data:
+    name: lusia_files_data
   # minio_data:
   #   name: lusia_minio_data
 
