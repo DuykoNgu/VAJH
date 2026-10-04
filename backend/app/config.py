@@ -3,7 +3,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ValidationError, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -67,6 +67,12 @@ class Settings(BaseSettings):
     figure_min_area_ratio: float = 0.02
     llm_concurrency: int = 4
     ingest_timeout_s: int = 3600
+    trace_payloads: Literal["all", "sampled"] = "sampled"  # sampled: lỗi/từ chối luôn đủ prompt, còn lại lấy mẫu
+    trace_sample_rate: float = Field(0.25, ge=0, le=1)
+    trace_payload_days: int = 7    # sau đó bỏ prompt/câu trả lời của trace chưa được đánh giá
+    trace_keep_days: int = 90      # sau đó xoá hẳn trace
+    llm_price_in_per_m: float | None = None   # USD / 1 triệu token vào, để /monitor ước tính chi phí (tuỳ chọn)
+    llm_price_out_per_m: float | None = None  # USD / 1 triệu token ra
     llm_timeout_s: float = 180  # mỗi lần gọi LLM (SDK mặc định 600 s × 3 lần thử: một kết nối treo giữ cả việc nạp sách)
 
     llm_provider: Literal["openai", "anthropic", "fake"] | None = None

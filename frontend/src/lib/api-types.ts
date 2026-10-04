@@ -381,6 +381,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/monitor/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Summary */
+        get: operations["summary_monitor_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitor/traces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Traces */
+        get: operations["traces_monitor_traces_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitor/traces/{trace_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Trace Detail */
+        get: operations["trace_detail_monitor_traces__trace_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitor/traces/{trace_id}/rating": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rate */
+        post: operations["rate_monitor_traces__trace_id__rating_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitor/routes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Routes
+         * @description Cấu hình route LLM đang chạy (đổi qua OPENAI_LLM_MODEL / LLM_ROUTES rồi khởi động lại API).
+         */
+        get: operations["routes_monitor_routes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -394,6 +482,19 @@ export interface components {
             id: string;
             /** Status */
             status: string;
+        };
+        /** AgentStats */
+        AgentStats: {
+            /** Agent */
+            agent: string;
+            /** Runs */
+            runs: number;
+            /** Errors */
+            errors: number;
+            /** P50 Ms */
+            p50_ms: number;
+            /** P95 Ms */
+            p95_ms: number;
         };
         /** Body_upload_document_documents_post */
         Body_upload_document_documents_post: {
@@ -623,6 +724,19 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** KindStats */
+        KindStats: {
+            /** Kind */
+            kind: string;
+            /** Count */
+            count: number;
+            /** Errors */
+            errors: number;
+            /** P50 Ms */
+            p50_ms: number;
+            /** P95 Ms */
+            p95_ms: number;
+        };
         /** Lesson */
         Lesson: {
             /**
@@ -728,6 +842,28 @@ export interface components {
             /** Part */
             part: number;
         };
+        /** Quality */
+        Quality: {
+            /** Turns */
+            turns: number;
+            /** Not Found Rate */
+            not_found_rate: number | null;
+            /** Check Answers */
+            check_answers: number;
+            /** Average Score */
+            average_score: number | null;
+            /** Thumbs Up */
+            thumbs_up: number;
+            /** Thumbs Down */
+            thumbs_down: number;
+        };
+        /** Rating */
+        Rating: {
+            /** Rating */
+            rating: (-1 | 1) | null;
+            /** Note */
+            note?: string | null;
+        };
         /** Review */
         Review: {
             /**
@@ -737,6 +873,34 @@ export interface components {
             action: "approve" | "reject";
             /** Description */
             description?: string | null;
+        };
+        /** RouteConfig */
+        RouteConfig: {
+            /** Route */
+            route: string;
+            /** Model */
+            model: string;
+            /** Effort */
+            effort: string;
+        };
+        /** RouteStats */
+        RouteStats: {
+            /** Route */
+            route: string;
+            /** Calls */
+            calls: number;
+            /** Errors */
+            errors: number;
+            /** Refusals */
+            refusals: number;
+            /** P50 Ms */
+            p50_ms: number;
+            /** P95 Ms */
+            p95_ms: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
         };
         /** SessionStarted */
         SessionStarted: {
@@ -750,6 +914,8 @@ export interface components {
             citations: components["schemas"]["Citation"][];
             /** Mode */
             mode: string;
+            /** Trace Id */
+            trace_id?: string | null;
             /**
              * Id
              * Format: uuid
@@ -757,6 +923,35 @@ export interface components {
             id: string;
             /** Lesson Title */
             lesson_title: string | null;
+        };
+        /** SpanOut */
+        SpanOut: {
+            /** Seq */
+            seq: number;
+            /** Parent Seq */
+            parent_seq: number | null;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Offset Ms */
+            offset_ms: number;
+            /** Duration Ms */
+            duration_ms: number;
+            /** Status */
+            status: string;
+            /** Model */
+            model: string | null;
+            /** Effort */
+            effort: string | null;
+            /** Input Tokens */
+            input_tokens: number | null;
+            /** Output Tokens */
+            output_tokens: number | null;
+            /** Detail */
+            detail: {
+                [key: string]: unknown;
+            };
         };
         /** StartSession */
         StartSession: {
@@ -776,6 +971,96 @@ export interface components {
             username: string;
             /** Lessons */
             lessons: components["schemas"]["LessonMastery"][];
+        };
+        /** Summary */
+        Summary: {
+            /** Hours */
+            hours: number;
+            /** Kinds */
+            kinds: components["schemas"]["KindStats"][];
+            /** Routes */
+            routes: components["schemas"]["RouteStats"][];
+            /** Agents */
+            agents: components["schemas"]["AgentStats"][];
+            quality: components["schemas"]["Quality"];
+            /** Estimated Cost Usd */
+            estimated_cost_usd: number | null;
+        };
+        /** TraceDetail */
+        TraceDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Duration Ms */
+            duration_ms: number;
+            /** Status */
+            status: string;
+            /** Error */
+            error: string | null;
+            /** Input */
+            input: string | null;
+            /** Output */
+            output: string | null;
+            /** Llm Calls */
+            llm_calls: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Rating */
+            rating: number | null;
+            /** Note */
+            note: string | null;
+            /** Session Id */
+            session_id: string | null;
+            /** Document Id */
+            document_id: string | null;
+            /** Spans */
+            spans: components["schemas"]["SpanOut"][];
+        };
+        /** TraceRow */
+        TraceRow: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Duration Ms */
+            duration_ms: number;
+            /** Status */
+            status: string;
+            /** Error */
+            error: string | null;
+            /** Input */
+            input: string | null;
+            /** Output */
+            output: string | null;
+            /** Llm Calls */
+            llm_calls: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Rating */
+            rating: number | null;
+            /** Note */
+            note: string | null;
         };
         /** TraceStep */
         TraceStep: {
@@ -806,6 +1091,8 @@ export interface components {
             citations: components["schemas"]["Citation"][];
             /** Mode */
             mode: string;
+            /** Trace Id */
+            trace_id?: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -1564,6 +1851,158 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summary_monitor_summary_get: {
+        parameters: {
+            query?: {
+                hours?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Summary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    traces_monitor_traces_get: {
+        parameters: {
+            query?: {
+                kind?: ("lesson_start" | "turn" | "preview" | "ingest") | null;
+                status?: ("ok" | "error") | null;
+                rated?: ("up" | "down" | "any") | null;
+                order?: "recent" | "slowest";
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceRow"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trace_detail_monitor_traces__trace_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                trace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rate_monitor_traces__trace_id__rating_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                trace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Rating"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    routes_monitor_routes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteConfig"][];
                 };
             };
         };

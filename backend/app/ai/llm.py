@@ -255,10 +255,12 @@ class OpenAILLM:
 
 
 def make_llm(settings: Settings) -> LLMClient:
+    from app.tracing import TracingLLM  # mọi lượt gọi LLM thành span trong trace hiện tại (trang /monitor)
+
     if settings.llm_provider == "fake":
         from app.ai.fakes import FakeLLM
 
-        return FakeLLM(settings)
+        return TracingLLM(FakeLLM(settings), settings)
     if settings.llm_provider == "anthropic":
-        return AnthropicLLM(settings)
-    return OpenAILLM(settings)
+        return TracingLLM(AnthropicLLM(settings), settings)
+    return TracingLLM(OpenAILLM(settings), settings)

@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pgvector import Vector
 from pydantic import BaseModel, Field
 
-from app import learning
+from app import learning, tracing
 from app.agents.base import Evidence, TurnContext
 from app.hooks import suggest_hooks
 from app.identity import CurrentTeacher, UserContext
@@ -202,7 +202,10 @@ async def preview(request: Request, body: PreviewRequest, teacher: UserContext =
     # phiên ảo: không có gì được lưu (preview=True bỏ qua câu hỏi kiểm tra và tiến độ)
     ctx = TurnContext(mode="teach", session_id=uuid.uuid4(), student_id=uuid.uuid4(), grade=rows[0][0],
                       lesson_id=body.lesson_id)
-    reply = await learning.teach_part(ctx, request.app.state.agents, parts, body.part, preview=True,
-                                      hook_ideas=[h.spoken for h in suggest_hooks(rows[0][1], rows[0][2], body.lesson_id)]
-                                      if body.part == 1 else None)
+    async with tracing.trace("preview", input=f"{rows[0][2]} — phần {body.part}") as t:
+        reply = await learning.teach_part(ctx, request.app.state.agents, parts, body.part, preview=True,
+                                          hook_ideas=[h.spoken for h in suggest_hooks(rows[0][1], rows[0][2],
+                                                                                        body.lesson_id)]
+                                          if body.part == 1 else None)
+        t.output = reply.answer
     return Preview(part=body.part, parts=len(parts), answer=reply.answer, sentences=reply.sentences)

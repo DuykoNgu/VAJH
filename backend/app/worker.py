@@ -7,9 +7,10 @@ from dataclasses import asdict
 from functools import wraps
 from uuid import UUID
 
-from arq import Retry, func
+from arq import Retry, cron, func
 from arq.connections import RedisSettings
 
+from app import tracing
 from app.config import get_settings
 from app.ingestion.pipeline import Deps, IngestionError, mark_failed, process_document
 from app.storage import relational
@@ -55,6 +56,12 @@ async def ingest_document(ctx, document_id: str) -> dict | None:
         return None
 
 
+async def purge_traces(ctx) -> dict:
+    """Hằng ngày: bỏ nội dung trace cũ (lời học sinh, prompt) và xoá trace quá hạn."""
+    settings = get_settings()
+    return await tracing.purge(settings.trace_payload_days, settings.trace_keep_days)
+
+
 async def startup(ctx) -> None:
     settings = get_settings()
     await relational.open_pool(settings.database_url)
@@ -67,6 +74,7 @@ async def shutdown(ctx) -> None:
 
 class WorkerSettings:
     functions = [ping, func(ingest_document, name="ingest_document", timeout=get_settings().ingest_timeout_s)]
+    cron_jobs = [cron(purge_traces, hour=3, minute=0)]  # 03:00 mỗi ngày
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)

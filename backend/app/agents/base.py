@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from typing import Literal, Protocol
 from uuid import UUID
 
+from app import tracing
+
 AgentName = Literal["orchestrator", "tutor", "knowledge", "vision", "document", "assessment", "student_model"]
 AGENT_NAMES: tuple[str, ...] = AgentName.__args__
 Mode = Literal["chat", "quiz", "teach", "ingestion"]
@@ -104,19 +106,26 @@ async def run_agent(agent: Agent, ctx: TurnContext) -> AsyncIterator[TextDelta |
     """Chạy agent và kiểm tra hợp đồng: text ghép lại == câu trả lời cuối, đúng 1 kết quả cuối, handoff hợp lệ."""
     fragments: list[str] = []
     final: AgentResult | None = None
-    async for event in agent.run(ctx):
-        if final is not None:
-            raise AgentContractError(f"agent {agent.name} emitted events after its final result")
-        if isinstance(event, TextDelta):
-            fragments.append(event.text)
-        elif isinstance(event, AgentResult):
-            _check_result(agent, event, fragments)
-            final = event
-        else:
-            raise AgentContractError(f"agent {agent.name} emitted unknown event {event!r}")
-        yield event
-    if final is None:
-        raise AgentContractError(f"agent {agent.name} finished without a final result")
+    with tracing.span("agent", agent.name) as s:  # span agent: các lượt gọi LLM bên trong nằm dưới nó
+        if s is not None:
+            s.detail.update(mode=ctx.mode, input=tracing.cap(ctx.text), evidence=[e.chunk_id for e in ctx.evidence])
+        async for event in agent.run(ctx):
+            if final is not None:
+                raise AgentContractError(f"agent {agent.name} emitted events after its final result")
+            if isinstance(event, TextDelta):
+                fragments.append(event.text)
+            elif isinstance(event, AgentResult):
+                _check_result(agent, event, fragments)
+                final = event
+                if s is not None:
+                    s.detail.update(output=tracing.cap(event.speech_text), citations=list(event.citations),
+                                    handoff={"target": event.handoff.target, "reason": event.handoff.reason}
+                                    if event.handoff else None)
+            else:
+                raise AgentContractError(f"agent {agent.name} emitted unknown event {event!r}")
+            yield event
+        if final is None:
+            raise AgentContractError(f"agent {agent.name} finished without a final result")
 
 
 def _check_result(agent: Agent, result: AgentResult, fragments: list[str]) -> None:

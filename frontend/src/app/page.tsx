@@ -15,6 +15,9 @@ export default function Home() {
         <Link href="/curation" className="rounded-lg border-2 p-4 focus:outline-4">
           📚 Giáo viên – Kiểm duyệt nội dung
         </Link>
+        <Link href="/monitor" className="rounded-lg border-2 p-4 focus:outline-4">
+          📈 Giám sát agent và LLM
+        </Link>
       </nav>
     </main>
   );

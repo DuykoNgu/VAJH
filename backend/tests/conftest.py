@@ -16,6 +16,7 @@ os.environ.update(
     EMBEDDING_PROVIDER="fake",
     LOCAL_OCR="false",                      # test tất định: không gọi OCR của macOS / model bố cục thật
     LAYOUT_MODEL_PATH="/nonexistent/doclayout.pt",
+    TRACE_PAYLOADS="all",                   # test lấy mẫu tự đổi sang "sampled"
 )
 
 import psycopg  # noqa: E402

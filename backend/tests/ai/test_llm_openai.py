@@ -57,7 +57,7 @@ class Routing(BaseModel):
 
 def test_make_llm_selects_openai():
     s = get_settings().model_copy(update={"llm_provider": "openai", "openai_api_key": "k"})
-    assert isinstance(make_llm(s), OpenAILLM)
+    assert isinstance(make_llm(s).inner, OpenAILLM)
 
 
 async def test_route_without_model_fails_before_request():

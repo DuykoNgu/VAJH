@@ -43,7 +43,7 @@ async def run(args, deps: Deps) -> int:
         await conn.execute("INSERT INTO documents (id, kind, title, subject, grade, storage_key)"
                            " VALUES (%s, 'textbook', %s, %s, %s, %s)",
                            (doc_id, args.title, args.subject, args.grade, key))
-    print(f"document {doc_id}: processing {args.file.name} ...")
+    print(f"document {doc_id}: processing {args.file.name} ...", flush=True)
     try:
         s = await process_document(doc_id, deps)
     except IngestionError as e:
@@ -57,21 +57,42 @@ async def run(args, deps: Deps) -> int:
     return 0
 
 
-class _CallLog(logging.Formatter):
-    """Mỗi lượt gọi LLM một dòng: route, thời gian, token (để biết bước nào chậm / tốn)."""
+class _Progress(logging.Formatter):
+    """Tiến trình nạp sách trên CLI: bước, từng trang OCR / tìm hình, từng lượt gọi LLM; cộng dồn token theo route."""
+
+    def __init__(self):
+        super().__init__()
+        self.tokens: dict[str, list[int]] = {}  # route → [lượt, token vào, token ra, mili giây]
 
     def format(self, record):
-        if record.getMessage() == "llm call":
-            r = record.__dict__
-            return (f"  llm {r['route']:<14} {r['latency_ms'] / 1000:6.1f}s  in={r['input_tokens']} "
+        r, message = record.__dict__, record.getMessage()
+        if message == "llm call":
+            total = self.tokens.setdefault(r["route"], [0, 0, 0, 0])
+            for i, v in enumerate((1, r["input_tokens"] or 0, r["output_tokens"] or 0, r["latency_ms"])):
+                total[i] += v
+            return (f"  llm  {r['route']:<14} {r['latency_ms'] / 1000:6.1f}s  in={r['input_tokens']} "
                     f"out={r['output_tokens']} {r['outcome']}")
-        return f"  {record.getMessage()}"
+        if message == "step":
+            return f"▶ bước: {r['step']}"
+        if message == "ocr page":
+            source = f"máy {r['local_s']:.1f}s, {r['raw_chars']} ký tự → sửa" if r["source"] == "local" else "LLM đọc ảnh"
+            return f"  ocr  trang {r['page']:>3} ({r['done']}/{r['total']})  {source} → {r['chars']} ký tự"
+        if message == "layout page":
+            return f"  hình trang {r['page']:>3}  {r['figures']} hình  {r['seconds']:.1f}s"
+        return f"  {message}"
+
+    def summary(self) -> str:
+        lines = ["Tổng LLM theo route:  lượt   token vào   token ra   thời gian"]
+        for route, (n, tin, tout, ms) in sorted(self.tokens.items()):
+            lines.append(f"  {route:<18} {n:>5} {tin:>11,} {tout:>10,} {ms / 1000:>9.0f}s")
+        return "\n".join(lines)
 
 
 async def main(argv=None) -> int:
     args = parse_args(argv)
+    progress = _Progress()
     handler = logging.StreamHandler()
-    handler.setFormatter(_CallLog())
+    handler.setFormatter(progress)
     logging.getLogger("lusia").addHandler(handler)
     logging.getLogger("lusia").setLevel(logging.INFO)
     if not args.file.is_file():
@@ -83,6 +104,7 @@ async def main(argv=None) -> int:
         return await run(args, Deps.from_settings(settings))
     finally:
         await relational.close_pool()
+        print(progress.summary())
 
 
 if __name__ == "__main__":

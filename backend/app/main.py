@@ -8,7 +8,7 @@ from app import jobs
 from app.ai.embeddings import make_embeddings, warm_up
 from app.ai.llm import make_llm
 from app.ai.speech import make_tts
-from app.api import chat, curation, documents, health, me, teacher, tts
+from app.api import chat, curation, documents, health, me, monitor, teacher, tts
 from app.config import Settings, get_settings
 from app.identity import DEV_USER_HEADER, make_identity_provider
 from app.learning import build_agents
@@ -57,6 +57,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(chat.router)
     app.include_router(teacher.router)
     app.include_router(curation.router)
+    app.include_router(monitor.router)
     return app
 
 

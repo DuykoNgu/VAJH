@@ -14,7 +14,7 @@ class Routing(BaseModel):
 
 def test_test_settings_select_fakes():
     s = get_settings()
-    assert isinstance(make_llm(s), FakeLLM) and isinstance(make_embeddings(s), FakeEmbeddings)
+    assert isinstance(make_llm(s).inner, FakeLLM) and isinstance(make_embeddings(s), FakeEmbeddings)  # bọc TracingLLM
     assert isinstance(make_stt(s), FakeSTT) and isinstance(make_tts(s), FakeTTS)
 
 

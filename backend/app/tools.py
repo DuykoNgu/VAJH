@@ -6,7 +6,9 @@ grade_answer, describe_image, read_document, create_learning_plan, send_teacher_
 Đã có: read_document (đọc PDF, OCR trang không có lớp chữ), describe_figure (dữ kiện của hình để giáo viên duyệt).
 """
 import asyncio
+import logging
 import re
+import time
 from collections.abc import Awaitable, Callable
 from typing import Literal
 
@@ -15,6 +17,8 @@ from pydantic import BaseModel
 
 from app.ai.llm import LLMClient, Refusal, image_block
 from app.ingestion.pdf import PageText, render_png
+
+log = logging.getLogger("lusia.ingestion")
 
 OCR_PROMPT = (
     "Chép lại CHÍNH XÁC toàn bộ chữ trên trang sách giáo khoa này, theo thứ tự đọc, giữ nguyên tiếng Việt có dấu "
@@ -69,10 +73,15 @@ async def read_document(doc: pymupdf.Document, pages: list[PageText], llm: LLMCl
     async def ocr(p: PageText):
         nonlocal done
         page = doc[p.number - 1]
+        started = time.perf_counter()
         raw = await asyncio.to_thread(local_ocr, page) if local_ocr else None
+        local_s = time.perf_counter() - started
         async with limit:
             texts[p.number - 1] = await (fix_ocr_text(llm, raw) if raw is not None else ocr_page(llm, page))
         done += 1
+        log.info("ocr page", extra={"page": p.number, "source": "local" if raw is not None else "llm",
+                                    "local_s": round(local_s, 2), "raw_chars": len(raw or ""),
+                                    "chars": len(texts[p.number - 1]), "done": done, "total": len(pages)})
         if on_page:
             await on_page(done)
 

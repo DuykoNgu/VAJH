@@ -259,6 +259,8 @@ Học sinh (không cần nhìn màn hình, không cần tìm nút nào):
 6. Hết bài: LUSIA tóm tắt và mời *“kiểm tra mình”* → 3 câu trắc nghiệm bằng giọng nói → điểm.
 7. Mở `/dashboard`: lớp 8A hiện **Hiểu bài / Hiểu hình** (gồm cả câu kiểm tra từng phần) và chỗ **Yếu**.
 
+**Giám sát và debug** (`/monitor`): mỗi lượt học, vào bài, nghe thử và nạp sách là một *trace*: agent nào chạy, lượt gọi LLM nào (route, model, effort, thời gian, token, prompt và câu trả lời), lỗi ở đâu. Trang tổng hợp p50/p95 theo agent và route, tỉ lệ câu “không có trong SGK”, điểm trung bình câu kiểm tra, 👍/👎 kèm ghi chú cho từng trace. Mỗi câu trả lời cho học sinh có `trace_id` để tra lại. Ước tính chi phí: đặt `LLM_PRICE_IN_PER_M` và `LLM_PRICE_OUT_PER_M` (USD / 1 triệu token) trong `backend/.env`. Xem trace dạng **JSON lồng nhau** (lượt gọi LLM nằm trong `children` của agent), sao chép hoặc tải `trace-<id>.json`. Nội dung prompt chỉ lưu đủ cho lượt lỗi / bị từ chối và một mẫu ngẫu nhiên (`TRACE_PAYLOADS=sampled`, `TRACE_SAMPLE_RATE=0.25`; debug kỹ thì đặt `TRACE_PAYLOADS=all`); worker tự xoá nội dung sau `TRACE_PAYLOAD_DAYS=7` ngày (trừ trace đã đánh giá) và xoá trace sau `TRACE_KEEP_DAYS=90` ngày, chạy lúc 03:00.
+
 Phím ở mọi nơi: **Space** giữ để nói · **Esc** dừng · **R** nghe lại · **H** trợ giúp. Lệnh nói: *nhắc lại, dừng, đổi bài, chậm lại, nhanh lên, trợ giúp, tiếp, kiểm tra mình*.
 
 > Máy có ứng dụng khác chiếm cổng 8000/3000? Chạy API ở cổng khác (`uvicorn app.main:app --port 8010`) và frontend với `NEXT_PUBLIC_API_URL=http://localhost:8010 npm run dev -- --port 3001`, thêm `FRONTEND_ORIGINS="http://localhost:3001"` cho backend.
@@ -299,6 +301,7 @@ Hackathon_VJAI/
 │       ├── page.tsx           # Trang chủ: chọn Học sinh / Giáo viên
 │       ├── learn/             # Giao diện học sinh (voice-first)
 │       ├── curation/          # Kiểm duyệt nội dung (chuẩn bị tri thức, xuất bản)
+│       ├── monitor/           # Giám sát agent + LLM (trace, độ trễ, token, đánh giá)
 │       └── dashboard/         # Teacher Dashboard
 ├── backend/                   # Python FastAPI
 │   ├── app/

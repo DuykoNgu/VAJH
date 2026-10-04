@@ -4,13 +4,16 @@ Mọi việc tốn kém làm TRƯỚC; cuối cùng hoán đổi toàn bộ less
 không để lại tài liệu nửa cũ nửa mới, và khi xử lý lại thì chunk cũ vẫn dùng được tới lúc hoán đổi.
 """
 import asyncio
+import json
 import logging
+import time
 import uuid
 from dataclasses import asdict, dataclass
 from uuid import UUID
 
 from pgvector import Vector
 
+from app import tracing
 from app.ai.embeddings import EmbeddingClient, make_embeddings
 from app.ai.llm import LLMClient, make_llm
 from app.config import Settings
@@ -86,12 +89,21 @@ def _lesson_of(page: int, lessons: list[LessonRange]) -> int | None:
 
 
 async def process_document(document_id: UUID, deps: Deps) -> Summary:
+    """Nạp tài liệu trong một trace "ingest" (mọi lượt OCR / mục lục / mô tả hình xem được ở /monitor)."""
+    async with tracing.trace("ingest", document_id=document_id) as t:
+        summary = await _process_document(document_id, deps)
+        t.output = json.dumps(asdict(summary), ensure_ascii=False)
+        return summary
+
+
+async def _process_document(document_id: UUID, deps: Deps) -> Summary:
     s = deps.settings
     step, pdf = "load", None
     try:
         (title, storage_key), lessons, old_figure_keys = await _load(document_id)
         data = await deps.files.get(storage_key)
         step = "parse"
+        log.info("step", extra={"step": step})
         pdf = open_pdf(data, s.max_pages)
         await _execute("UPDATE documents SET page_count = %s, processed_pages = 0, updated_at = now() WHERE id = %s",
                        (pdf.page_count, document_id))
@@ -102,10 +114,14 @@ async def process_document(document_id: UUID, deps: Deps) -> Summary:
             await _execute("UPDATE documents SET processed_pages = %s WHERE id = %s", (done, document_id))
 
         step = "ocr"
+
+        log.info("step", extra={"step": step})
         texts, ocr_pages = await read_document(pdf, pages, deps.llm, limit=limit, on_page=progress,
                                                local_ocr=scan.local_ocr if s.local_ocr else None)
 
         step = "lessons"
+
+        log.info("step", extra={"step": step})
         reuse_lessons = bool(lessons)  # xử lý lại: giữ nguyên bài học (và id) đã có
         source = "existing"
         if not reuse_lessons:
@@ -113,13 +129,19 @@ async def process_document(document_id: UUID, deps: Deps) -> Summary:
         text_chunks = chunk_document(texts, lessons, s.chunk_max_chars, s.chunk_overlap_chars)
 
         step = "figures"
+
+        log.info("step", extra={"step": step})
         found: list[Figure] = []
         for page in pdf:
             if _lesson_of(page.number + 1, lessons) is None:
                 continue  # bìa, lời nói đầu, mục lục: không giảng → không tốn lượt mô tả hình, không chặn xuất bản
             if scan.is_scanned(page):  # cả trang là ảnh: model bố cục khoanh hình (tách nét vẽ không dùng được)
-                found += await asyncio.to_thread(scan.detect_figures, page, s.layout_model_path,
-                                                 s.figure_min_area_ratio)
+                started = time.perf_counter()
+                on_page = await asyncio.to_thread(scan.detect_figures, page, s.layout_model_path,
+                                                  s.figure_min_area_ratio)
+                found += on_page
+                log.info("layout page", extra={"page": page.number + 1, "figures": len(on_page),
+                                               "seconds": round(time.perf_counter() - started, 2)})
             else:
                 found += await asyncio.to_thread(extract_figures, page, s.figure_min_area_ratio)
         skipped = 0
@@ -144,11 +166,15 @@ async def process_document(document_id: UUID, deps: Deps) -> Summary:
             await deps.files.put(key, fig.png, "image/png")
 
         step = "embed"
+
+        log.info("step", extra={"step": step})
         vectors = await deps.embeddings.embed(
             [embedding_text(c.content, lessons[c.lesson].title if c.lesson is not None else None) for c in text_chunks]
             + [d.description for _, d in figures])
 
         step = "store"
+
+        log.info("step", extra={"step": step})
         async with relational.transaction() as conn:
             if not reuse_lessons:
                 ids = []

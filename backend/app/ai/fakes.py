@@ -19,7 +19,7 @@ class FakeLLM:
         self.calls: list[dict] = []
 
     def script(self, *responses) -> "FakeLLM":
-        """Mỗi phần tử: str (text), dict/BaseModel (structured output) hoặc Refusal."""
+        """Mỗi phần tử: str (text), dict/BaseModel (structured output), Refusal, hoặc Exception (bị ném ra)."""
         self.scripted.extend(responses)
         return self
 
@@ -27,6 +27,8 @@ class FakeLLM:
         resolve_route(self.settings, route)
         self.calls.append({"route": route, "messages": messages, "system": system, "schema": schema})
         reply = self.scripted.pop(0) if self.scripted else _last_user_text(messages)
+        if isinstance(reply, Exception):
+            raise reply
         if isinstance(reply, Refusal):
             return reply
         if schema is not None:
