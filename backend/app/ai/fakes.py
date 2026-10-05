@@ -81,5 +81,10 @@ class FakeSTT:
 
 
 class FakeTTS:
+    stream_format = "audio/x-fake"
+
     async def synthesize(self, request: SynthesizeRequest) -> Speech:
         return Speech(audio=b"FAKEAUDIO:" + request.text.encode(), audio_format="audio/x-fake")
+
+    async def stream(self, text: str):
+        yield b"FAKEAUDIO:" + text.encode() + b"\n"

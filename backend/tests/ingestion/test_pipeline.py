@@ -1,6 +1,7 @@
 import pytest
 
 from app.ai.fakes import FakeLLM
+from app.ai.llm import Refusal
 from app.ingestion.pipeline import IngestionError, mark_failed, process_document
 from tests import pdfs
 from tests.ingestion.conftest import GRAPH
@@ -119,3 +120,31 @@ async def test_figures_outside_every_lesson_are_skipped(db, deps, new_document):
     summary = await process_document(doc_id, deps)
     assert summary.figure_chunks == 1 and [r[2] for r in chunks(db, doc_id) if r[0] == "figure"] == [6]
     assert [c["route"] for c in deps.llm.calls] == ["document", "vision_offline"]   # chỉ mô tả hình trong bài
+
+
+async def test_outline_generated_after_import(db, deps, new_document):
+    deps.settings = deps.settings.model_copy(update={"outline_on_ingest": True})
+    doc_id = await new_document(pdfs.lessons_pdf())
+    point = {"title": "Ý chính", "content": "Hàm số bậc nhất là hàm số y = ax + b.", "question": "a phải thế nào?",
+             "answer": "khác 0", "sources": []}
+    deps.llm.script(GRAPH, {"opening": "", "opening_sources": [], "points": [point]}, Refusal("other"))
+    summary = await process_document(doc_id, deps)
+    assert document(db, doc_id)[0] == "ready" and summary.outlined_lessons == 1     # bài 2 lỗi: vẫn sẵn sàng
+    assert [c["route"] for c in deps.llm.calls] == ["vision_offline", "outline", "outline"]
+    assert db.execute("SELECT count(*) FROM lesson_points").fetchone()[0] == 1
+
+
+async def test_progress_reported_after_ocr_and_cleared(db, deps, new_document, monkeypatch):
+    from app.ingestion import progress
+
+    reported = []
+
+    async def report(self, text):
+        reported.append(text)
+
+    monkeypatch.setattr(progress.Progress, "report", report)
+    doc_id = await new_document(pdfs.lessons_pdf())
+    deps.llm.script(GRAPH)
+    await process_document(doc_id, deps)
+    assert "Đang chia bài theo mục lục" in reported and "Đang mô tả hình 1/1" in reported
+    assert reported[-1] == "Đang lưu" and any(r.startswith("Đang tìm hình trang") for r in reported)

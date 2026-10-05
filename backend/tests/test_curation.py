@@ -109,3 +109,71 @@ async def test_rejected_figure_listed_without_part_number(api, draft):
     await api.post(f"/teacher/figures/{draft['chunks']['figure']}/review", json={"action": "reject"}, headers=TEACHER)
     parts = (await api.get(doc_url(draft), headers=TEACHER)).json()["lessons"][1]["parts"]
     assert [(p["kind"], p["number"], p["review"]) for p in parts] == [("text", 1, None), ("figure", None, "rejected")]
+
+
+async def test_outline_shown_edited_regenerated_and_taught(api, draft, db):
+    from tests.test_outline import draft as outline_draft
+
+    lesson, text_id, figure_id = draft["lessons"][2], draft["chunks"]["graph_text"], draft["chunks"]["figure"]
+    before = (await api.get(doc_url(draft), headers=TEACHER)).json()["lessons"][1]
+    assert before["outline"] == [] and before["teaching"][0]["label"].startswith("Đồ thị của hàm số")  # đoạn đã lọc
+    api.app.state.llm.script(outline_draft(text_id, figure_id))
+    outline = (await api.post(f"/curation/lessons/{lesson}/outline", headers=TEACHER)).json()
+    assert [(p["position"], p["title"], p["pages"]) for p in outline] == [
+        (0, "Mở đầu", [4]), (1, "Đồ thị là đường thẳng", [4]), (2, "Giao điểm với trục tung", [5])]
+    r = await api.patch(f"/curation/lessons/{lesson}/outline/1", headers=TEACHER, json={
+        "title": "Đồ thị là một đường thẳng", "content": "Đồ thị của y = ax + b là một đường thẳng.",
+        "question": "Đồ thị là đường gì?", "answer": "đường thẳng"})
+    assert r.status_code == 200 and r.json()[1]["title"] == "Đồ thị là một đường thẳng"
+    bad = await api.patch(f"/curation/lessons/{lesson}/outline/1", headers=TEACHER,
+                          json={"title": "x", "content": "y", "question": "Hỏi?", "answer": ""})
+    assert bad.status_code == 422
+    assert (await api.delete(f"/curation/lessons/{lesson}/outline/2", headers=TEACHER)).status_code == 204
+    after = (await api.get(doc_url(draft), headers=TEACHER)).json()["lessons"][1]
+    assert [t["label"] for t in after["teaching"]] == ["Đồ thị là một đường thẳng"]               # LUSIA giảng theo dàn ý
+
+
+async def test_regenerate_failure_keeps_the_old_outline(api, draft):
+    from app.ai.llm import Refusal
+
+    api.app.state.llm.script(Refusal("other"))
+    r = await api.post(f"/curation/lessons/{draft['lessons'][2]}/outline", headers=TEACHER)
+    assert r.status_code == 502 and "Không tạo được dàn ý" in r.json()["detail"]
+
+
+async def test_processing_document_shows_its_current_step(api, draft, db):
+    from app.ingestion.progress import key
+    from app.storage import cache
+
+    db.execute("UPDATE documents SET status = 'processing', published_at = NULL WHERE id = %s", (draft["document"],))
+    await cache.redis().set(key(draft["document"]), "Đang mô tả hình 120/290", ex=60)
+    try:
+        doc = next(d for d in (await api.get("/curation/documents", headers=TEACHER)).json()
+                   if d["id"] == str(draft["document"]))
+        assert doc["progress"] == "Đang mô tả hình 120/290"
+    finally:
+        await cache.redis().delete(key(draft["document"]))
+
+
+async def test_curation_upload_belongs_to_the_teacher(api, draft, db, make_teacher):
+    from tests import pdfs
+
+    form = {"title": "Toán 5", "subject": "toan", "grade": "5"}
+    files = {"file": ("toan5.pdf", pdfs.plain_pdf(1), "application/pdf")}
+    r = await api.post("/curation/documents", data=form, files=files, headers=TEACHER)
+    assert r.status_code == 202
+    owner = db.execute("SELECT u.username FROM documents d JOIN users u ON u.id = d.uploaded_by WHERE d.id = %s",
+                       (r.json()["id"],)).fetchone()[0]
+    assert owner == "colan"
+    student = await api.post("/curation/documents", data=form, files=files, headers=as_user("minh8a"))
+    assert student.status_code == 400  # danh tính dev: endpoint cần giáo viên
+
+
+async def test_approve_all_figures_then_publish(api, draft, db):
+    rejected = draft["add"](2, "Hình trang trí", kind="figure", review="rejected", page=5)
+    r = await api.post(doc_url(draft, "/figures/approve-all"), headers=TEACHER)
+    assert r.status_code == 200 and r.json() == {"approved": 1}
+    assert db.execute("SELECT review FROM chunks WHERE id = %s", (rejected,)).fetchone()[0] == "rejected"
+    assert (await api.post(doc_url(draft, "/publish"), headers=TEACHER)).json()["published"] is True
+    student = await api.post(doc_url(draft, "/figures/approve-all"), headers=as_user("minh8a"))
+    assert student.status_code == 400

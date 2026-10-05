@@ -76,7 +76,7 @@ def test_route_override(env, monkeypatch):
     monkeypatch.setenv("LLM_ROUTES", '{"orchestrator": {"model": "other-model", "effort": "low"}}')
     s = env(**BASE, APP_ENV="test")
     assert s.llm_routes["orchestrator"].model == "other-model"
-    assert s.llm_routes["tutor"].model == "claude-opus-5-5" and s.llm_routes["tutor"].effort == "medium"
+    assert s.llm_routes["tutor"].model == "claude-opus-5-5" and s.llm_routes["tutor"].effort == "low"
 
 
 def test_ingestion_defaults_and_relative_files_dir(env):

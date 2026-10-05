@@ -1,3 +1,4 @@
+import uuid
 """Giảng bài theo từng phần: vào bài → phần 1 → câu hỏi kiểm tra → chấm → "tiếp" → phần hình (Vision) → tóm tắt."""
 import pytest
 
@@ -39,7 +40,7 @@ async def test_entering_a_lesson_teaches_part_1(api, make_student, textbook, db)
     assert body["answer"].endswith(TEACH_1["check_question"])
     assert [t["agent"] for t in body["trace"]] == ["tutor", "assessment"]
     assert pending(db, body["id"]) == [(TEACH_1["check_question"], "concept", None)]
-    assert api.app.state.llm.calls[0]["route"] == "tutor" and "MỘT ý nhỏ" in api.app.state.llm.calls[0]["system"]
+    assert api.app.state.llm.calls[0]["route"] == "tutor" and "ĐI THẲNG VÀO KIẾN THỨC" in api.app.state.llm.calls[0]["system"]
 
 
 async def test_correct_answer_then_figure_part_with_vision(api, make_student, textbook, db):
@@ -49,7 +50,7 @@ async def test_correct_answer_then_figure_part_with_vision(api, make_student, te
                                                 "re_explanation": ""})
     assert r["answer"] == f"Đúng rồi! Giỏi lắm. {NEXT_PART}" and r["mode"] == "teach"
     assert db.execute("SELECT score FROM answers").fetchone()[0] == 1
-    r = await ask(api, sid, "tiếp", NEXT, TEACH_2)
+    r = await ask(api, sid, "tiếp", TEACH_2)
     assert [t["agent"] for t in r["trace"]] == ["orchestrator", "vision", "tutor", "assessment"]
     assert r["answer"].startswith(f"Phần 2. {DISCLAIMER}") and r["answer"].endswith(TEACH_2["check_question"])
     assert pending(db, sid) == [(TEACH_2["check_question"], "figure", None)]
@@ -84,10 +85,10 @@ async def test_end_of_lesson_summary_offers_quiz_and_mastery_counts_checks(api, 
     sid = (await enter(api, textbook["lessons"][2]))["id"]
     grade = {"is_student_question": False, "score": 1, "feedback": "Tốt.", "re_explanation": ""}
     await ask(api, sid, "một đường thẳng", grade)
-    await ask(api, sid, "tiếp", NEXT, TEACH_2)
+    await ask(api, sid, "tiếp", TEACH_2)
     r = await ask(api, sid, "điểm một", {**grade, "score": 0.5, "re_explanation": "Là điểm có tung độ bằng một."})
     assert r["answer"].startswith("Em trả lời đúng một phần.") and r["answer"].endswith(TO_SUMMARY)
-    r = await ask(api, sid, "tiếp", NEXT, {"answer": "Đồ thị hàm số bậc nhất là đường thẳng.", "cited": [1]})
+    r = await ask(api, sid, "tiếp", {"answer": "Đồ thị hàm số bậc nhất là đường thẳng.", "cited": [1]})
     assert r["answer"].startswith("Mình đã học hết bài.") and r["answer"].endswith(OFFER_QUIZ)
     concept, figure = db.execute("SELECT concept_mastery, figure_mastery FROM lesson_mastery WHERE student_id = %s",
                                  (student,)).fetchone()
@@ -135,6 +136,87 @@ async def test_later_parts_have_no_hook(api, make_student, textbook, db):
     sid = (await enter(api, textbook["lessons"][2]))["id"]
     await ask(api, sid, "một đường thẳng", {"is_student_question": False, "score": 1, "feedback": "Tốt.",
                                             "re_explanation": ""})
-    r = await ask(api, sid, "tiếp", NEXT, {**TEACH_2, "hook": "Câu dẫn không được dùng ở phần 2."})
+    r = await ask(api, sid, "tiếp", {**TEACH_2, "hook": "Câu dẫn không được dùng ở phần 2."})
     assert "Câu dẫn không được dùng" not in r["answer"] and r["answer"].startswith("Phần 2.")
     assert "MỞ ĐẦU" not in api.app.state.llm.calls[-1]["messages"][-1]["content"]
+
+
+def outline(db, lesson, opening, points):
+    """points: (title, content, question, answer, chunk_ids)"""
+    db.execute("INSERT INTO lesson_points (lesson_id, position, title, content, chunk_ids) VALUES (%s, 0, 'Mở đầu', %s,"
+               " '{}')", (lesson, opening))
+    for position, (title, content, question, answer, ids) in enumerate(points, 1):
+        db.execute("INSERT INTO lesson_points (lesson_id, position, title, content, question, answer, chunk_ids)"
+                   " VALUES (%s, %s, %s, %s, %s, %s, %s)", (lesson, position, title, content, question, answer, ids))
+
+
+RIGHT = {"is_student_question": False, "score": 1, "feedback": "Tốt.", "re_explanation": ""}
+
+
+async def test_outline_lesson_goes_straight_to_the_points(api, make_student, textbook, db):
+    make_student("minh8a")
+    lesson, text_id, figure_id = textbook["lessons"][2], textbook["chunks"]["graph_text"], textbook["chunks"]["figure"]
+    outline(db, lesson, "Bạn An đi bộ 2 km mỗi giờ; sau x giờ An đi được bao xa?", [
+        ("Đồ thị là đường thẳng", "Đồ thị của y = ax + b là một đường thẳng.", "Đồ thị của y = 2x + 1 là đường gì?",
+         "một đường thẳng", [text_id]),
+        ("Giao điểm với trục tung", "Đường thẳng cắt trục tung tại tung độ b.", "Cắt trục tung ở đâu?", "tại 1",
+         [figure_id])])
+    api.app.state.llm.script({**TEACH_1, "hook": "An đi 2 km mỗi giờ, sau x giờ đi được 2x km.",
+                              "expected_answer": "đáp án Tutor tự nghĩ"})
+    r = await api.post("/sessions", json={"lesson_id": str(lesson)}, headers=as_user("minh8a"))
+    answer = r.json()["answer"]
+    assert "Bài có 2 ý: một, Đồ thị là đường thẳng; hai, Giao điểm với trục tung." in answer      # lộ trình trước
+    assert "An đi 2 km mỗi giờ, sau x giờ đi được 2x km. Ý 1: Đồ thị là đường thẳng." in answer
+    task = api.app.state.llm.calls[-1]["messages"][-1]["content"]
+    assert "«Bạn An đi bộ 2 km mỗi giờ" in task and "«Đồ thị của y = 2x + 1 là đường gì?»" in task
+    assert "[1] ĐOẠN SÁCH" in task and "Đồ thị là đường thẳng. Đồ thị của y = ax + b" in task      # kiến thức của ý
+    sid = r.json()["id"]
+    assert pending(db, sid)[0][0] == TEACH_1["check_question"]
+    assert db.execute("SELECT correct_answer FROM questions").fetchone()[0] == "một đường thẳng"  # đáp án của sách
+
+    await ask(api, sid, "một đường thẳng", RIGHT)
+    second = await ask(api, sid, "tiếp", TEACH_2)
+    assert second["answer"].startswith("Ý 2: Giao điểm với trục tung.") and "vision" in [s["agent"] for s in second["trace"]]
+    await ask(api, sid, "tại một", RIGHT)
+    calls = len(api.app.state.llm.calls)
+    done = await ask(api, sid, "tiếp")
+    assert done["answer"] == ("Mình đã học hết bài. Bài có 2 ý: một, Đồ thị là đường thẳng; hai, Giao điểm với trục"
+                              f" tung. {OFFER_QUIZ}")
+    assert len(api.app.state.llm.calls) == calls                                       # "tiếp" + tóm tắt: không gọi LLM
+
+
+async def test_without_outline_the_opening_hook_is_direct(api, make_student, textbook):
+    make_student("minh8a")
+    await enter(api, textbook["lessons"][1])                          # "Bài 1. Hàm số bậc nhất": không có câu đúng chủ đề
+    task = api.app.state.llm.calls[-1]["messages"][-1]["content"]
+    assert "nói thẳng bài này giúp em làm được gì" in task and "Gợi ý" not in task and "Có thể dùng" not in task
+
+
+def test_grader_verifies_the_expected_answer_itself():
+    from app.agents.assessment import OPEN_SYSTEM
+
+    assert "chỉ để THAM KHẢO và có thể sai: tự giải lại câu hỏi" in OPEN_SYSTEM
+
+
+async def test_next_part_is_prepared_while_the_student_answers(api, make_student, textbook, db, monkeypatch):
+    import asyncio
+
+    from app import learning
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "prefetch_parts", True)
+    make_student("minh8a")
+    api.app.state.llm.script(TEACH_1, TEACH_2)                      # ý 1 khi vào bài, ý 2 được soạn sẵn ngay sau đó
+    r = await api.post("/sessions", json={"lesson_id": str(textbook["lessons"][2])}, headers=as_user("minh8a"))
+    sid = r.json()["id"]
+    for _ in range(100):                                            # chờ việc soạn sẵn (chạy ngầm) xong
+        task = learning._AHEAD.get((uuid.UUID(sid), 2))
+        if task and task.done():
+            break
+        await asyncio.sleep(0.01)
+    await ask(api, sid, "một đường thẳng", RIGHT)
+    calls = len(api.app.state.llm.calls)
+    second = await ask(api, sid, "tiếp")
+    assert second["answer"].startswith("Phần 2.") and TEACH_2["explanation"] in second["answer"]
+    assert len(api.app.state.llm.calls) == calls                     # "tiếp": không chờ LLM nào
+    assert any("(soạn sẵn)" in s["summary"] for s in second["trace"])

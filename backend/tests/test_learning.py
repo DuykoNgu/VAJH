@@ -111,3 +111,21 @@ async def test_unknown_and_ended_sessions(api, make_student, textbook, db):
     assert (await api.post(f"/sessions/{sid}/end")).status_code == 204
     assert (await api.post(f"/sessions/{sid}/turns", json={"text": "x"})).status_code == 409
     assert (await api.post("/sessions", json={"lesson_id": missing})).status_code == 404
+
+
+async def test_citation_numbers_never_reach_the_spoken_answer(api, make_student, textbook, db):
+    make_student("minh8a")
+    sid = await session(api, textbook["lessons"][1], db)
+    reply = await ask(api, sid, "Hàm số bậc nhất là gì?", EXPLAIN_ROUTE,
+                      {"answer": "Hàm số bậc nhất có dạng y = ax + b. [1] Em thử lấy ví dụ nhé? [1, 2]", "cited": [1]})
+    assert "[" not in reply["answer"] and all("[" not in s for s in reply["sentences"])
+    assert reply["citations"]                                                   # trích dẫn vẫn giữ riêng
+
+
+@pytest.mark.parametrize("text, intent", [("tiếp", "next"), ("Tiếp nhé!", "next"), ("ý tiếp theo ạ", "next"),
+                                          ("Kiểm tra mình đi ạ", "quiz"), ("Tiếp theo là gì vậy?", None),
+                                          ("Đơn thức là gì?", None)])
+def test_quick_intents_skip_the_llm(text, intent):
+    from app.agents.orchestrator import quick_intent
+
+    assert quick_intent(text) == intent

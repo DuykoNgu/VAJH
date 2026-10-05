@@ -140,7 +140,7 @@ async def test_one_usage_log_record_without_secrets(caplog):
     assert len(records) == 1
     r = records[0]
     assert (r.route, r.model, r.effort, r.input_tokens, r.output_tokens, r.outcome) == \
-        ("tutor", "claude-opus-5-5", "medium", 11, 7, "ok")
+        ("tutor", "claude-opus-5-5", "low", 11, 7, "ok")
     assert isinstance(r.latency_ms, int)
     dumped = json.dumps(r.__dict__, default=str)
     assert "sk-test-secret" not in dumped and "Giải thích" not in dumped

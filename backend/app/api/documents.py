@@ -85,6 +85,12 @@ async def _require_document(doc_id: UUID):
 async def upload_document(request: Request, file: UploadFile, title: str = Form(min_length=1),
                           subject: Subject = Form(), grade: int = Form(ge=1, le=12),
                           user: UserContext = CurrentUser) -> Accepted:
+    return await store_upload(request, file, title, subject, grade, user)
+
+
+async def store_upload(request: Request, file: UploadFile, title: str, subject: str, grade: int,
+                       user: UserContext) -> Accepted:
+    """Kiểm tra PDF, lưu file, tạo tài liệu (chủ = người tải lên) và xếp hàng xử lý."""
     settings = _settings(request)
     limit = settings.max_upload_mb * 1024 * 1024
     data = await file.read(limit + 1)

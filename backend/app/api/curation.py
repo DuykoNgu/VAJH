@@ -7,16 +7,19 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Form, HTTPException, Request, Response, UploadFile
 from pgvector import Vector
 from pydantic import BaseModel, Field
 
 from app import learning, tracing
 from app.agents.base import Evidence, TurnContext
-from app.hooks import suggest_hooks
+from app.api.documents import Accepted, Subject, store_upload
 from app.identity import CurrentTeacher, UserContext
+from app.ingestion import progress
+from app.storage import cache
 from app.storage import relational
-from app.teaching import group_parts, lesson_parts
+from app.outline import OutlineError, generate_outline, load_outline, outline_document
+from app.teaching import group_parts, lesson_opening, lesson_parts
 
 router = APIRouter(prefix="/curation", tags=["curation"])
 
@@ -32,6 +35,7 @@ class CurationDocument(BaseModel):
     processed_pages: int
     page_count: int | None
     published: bool
+    progress: str | None = None  # bước đang chạy sau OCR ("Đang mô tả hình 120/290"), khi đang xử lý
     lessons: int
     text_chunks: int
     figures: int
@@ -49,13 +53,38 @@ class CurationPart(BaseModel):
     image_url: str | None
 
 
+class OutlineItem(BaseModel):
+    position: int  # 0 = mở bài (tình huống mở đầu của sách), 1.. = ý chính
+    title: str
+    content: str
+    question: str | None
+    answer: str | None
+    pages: list[int]
+
+
+class TeachingItem(BaseModel):
+    """Đúng những gì LUSIA sẽ giảng, theo thứ tự (dàn ý, hoặc đoạn SGK đã lọc nhiễu khi chưa có dàn ý)."""
+    number: int
+    label: str
+    kind: Literal["text", "figure"]
+
+
 class CurationLesson(BaseModel):
     id: UUID
     position: int
     title: str
     page_start: int
     page_end: int
-    parts: list[CurationPart]
+    outline: list[OutlineItem]
+    teaching: list[TeachingItem]
+    parts: list[CurationPart]  # nguồn tri thức (đoạn SGK, hình) để sửa / duyệt
+
+
+class PointEdit(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1, max_length=3000)
+    question: str | None = Field(default=None, max_length=500)
+    answer: str | None = Field(default=None, max_length=500)
 
 
 class CurationDetail(BaseModel):
@@ -109,7 +138,17 @@ async def _one_document(doc_id: UUID) -> CurationDocument:
 @router.get("/documents", response_model=list[CurationDocument])
 async def list_documents(teacher: UserContext = CurrentTeacher) -> list[CurationDocument]:
     # authz-later: chỉ SGK được phép sửa và tài liệu của lớp mình
-    return [_document(r) for r in await _rows(DOC_SQL + " GROUP BY d.id ORDER BY d.created_at DESC")]
+    docs = [_document(r) for r in await _rows(DOC_SQL + " GROUP BY d.id ORDER BY d.created_at DESC")]
+    steps = await progress.read(cache.redis(), [d.id for d in docs if d.status == "processing"])
+    return [d.model_copy(update={"progress": steps.get(d.id)}) for d in docs]
+
+
+@router.post("/documents", status_code=202, response_model=Accepted)
+async def upload_as_teacher(request: Request, file: UploadFile, title: str = Form(min_length=1),
+                            subject: Subject = Form(), grade: int = Form(ge=1, le=12),
+                            teacher: UserContext = CurrentTeacher) -> Accepted:
+    """Trang kiểm duyệt tải sách lên bằng tài khoản GIÁO VIÊN (học sinh khác thấy sau khi xuất bản)."""
+    return await store_upload(request, file, title, subject, grade, teacher)
 
 
 @router.get("/documents/{doc_id}", response_model=CurationDetail)
@@ -131,8 +170,75 @@ async def get_document(doc_id: UUID, teacher: UserContext = CurrentTeacher) -> C
                               review=e.review, image_url=f"/figures/{e.chunk_id}/image" if e.kind == "figure" else None)
                  for n, e in items]
         result.append(CurationLesson(id=lid, position=position, title=title, page_start=start, page_end=end,
-                                     parts=parts))
+                                     outline=await _outline_items(lid), teaching=await _teaching(lid), parts=parts))
     return CurationDetail(document=document, lessons=result)
+
+
+async def _outline_items(lesson_id: UUID) -> list[OutlineItem]:
+    points = await load_outline(lesson_id)
+    ids = list({i for p in points for i in p.chunk_ids})
+    page = dict(await _rows("SELECT id, page FROM chunks WHERE id = ANY(%s)", (ids,))) if ids else {}
+    return [OutlineItem(position=p.position, title=p.title, content=p.content, question=p.question, answer=p.answer,
+                        pages=sorted({page[i] for i in p.chunk_ids if i in page})) for p in points]
+
+
+async def _teaching(lesson_id: UUID) -> list[TeachingItem]:
+    return [TeachingItem(number=p.number, kind=p.kind,
+                         label=p.title or " ".join(p.evidence[0].content.split())[:120])
+            for p in await lesson_parts(lesson_id)]
+
+
+@router.post("/lessons/{lesson_id}/outline", response_model=list[OutlineItem])
+async def regenerate_outline(request: Request, lesson_id: UUID, teacher: UserContext = CurrentTeacher):
+    """Rút lại dàn ý từ nguồn tri thức hiện tại (một lượt LLM); lỗi thì giữ dàn ý cũ."""
+    async with tracing.trace("ingest", input=f"dàn ý bài {lesson_id}") as t:
+        try:
+            points = await generate_outline(request.app.state.llm, lesson_id)
+        except OutlineError as e:
+            raise HTTPException(502, f"Không tạo được dàn ý: {e}") from None
+        t.output = "; ".join(p.title for p in points)
+    return await _outline_items(lesson_id)
+
+
+class LessonOutlined(BaseModel):
+    title: str
+    points: int  # 0 = lỗi, bài đó giữ dàn ý cũ
+
+
+@router.post("/documents/{doc_id}/outline", response_model=list[LessonOutlined])
+async def outline_whole_document(request: Request, doc_id: UUID,
+                                 teacher: UserContext = CurrentTeacher) -> list[LessonOutlined]:
+    """Dàn ý cho mọi bài (song song), theo thứ tự bài."""
+    await _one_document(doc_id)
+    async with tracing.trace("ingest", document_id=doc_id, input="dàn ý cả tài liệu") as t:
+        result = await outline_document(request.app.state.llm, doc_id, request.app.state.settings.llm_concurrency)
+        t.output = str(result)
+    return [LessonOutlined(title=title, points=points) for title, points in result]
+
+
+@router.patch("/lessons/{lesson_id}/outline/{position}", response_model=list[OutlineItem])
+async def edit_point(lesson_id: UUID, position: int, body: PointEdit,
+                     teacher: UserContext = CurrentTeacher) -> list[OutlineItem]:
+    question, answer = (body.question or "").strip() or None, (body.answer or "").strip() or None
+    if (question is None) != (answer is None):
+        raise HTTPException(422, "Câu hỏi kiểm tra và đáp án phải đi cùng nhau.")
+    if position == 0 and question:
+        raise HTTPException(422, "Phần mở bài không có câu hỏi kiểm tra.")
+    async with relational.connection() as conn:
+        found = await (await conn.execute(
+            "UPDATE lesson_points SET title = %s, content = %s, question = %s, answer = %s"
+            " WHERE lesson_id = %s AND position = %s RETURNING position",
+            (body.title.strip(), body.content.strip(), question, answer, lesson_id, position))).fetchone()
+    if found is None:
+        raise HTTPException(404, "point not found")
+    return await _outline_items(lesson_id)
+
+
+@router.delete("/lessons/{lesson_id}/outline/{position}", status_code=204)
+async def delete_point(lesson_id: UUID, position: int, teacher: UserContext = CurrentTeacher) -> Response:
+    async with relational.connection() as conn:
+        await conn.execute("DELETE FROM lesson_points WHERE lesson_id = %s AND position = %s", (lesson_id, position))
+    return Response(status_code=204)
 
 
 async def _text_chunk(chunk_id: int) -> None:
@@ -163,6 +269,23 @@ async def delete_chunk(chunk_id: int, teacher: UserContext = CurrentTeacher) -> 
     async with relational.connection() as conn:
         await conn.execute("DELETE FROM chunks WHERE id = %s", (chunk_id,))
     return Response(status_code=204)
+
+
+class Approved(BaseModel):
+    approved: int
+
+
+@router.post("/documents/{doc_id}/figures/approve-all", response_model=Approved)
+async def approve_all_figures(doc_id: UUID, teacher: UserContext = CurrentTeacher) -> Approved:
+    """Duyệt một lần mọi hình đang chờ của tài liệu (giáo viên đã xem lướt); hình đã từ chối giữ nguyên."""
+    # authz-later: chỉ giáo viên được phép duyệt tài liệu này
+    await _one_document(doc_id)
+    async with relational.connection() as conn:
+        rows = await (await conn.execute(
+            "UPDATE chunks SET review = 'approved', reviewed_by = %s, reviewed_at = now()"
+            " WHERE document_id = %s AND kind = 'figure' AND review = 'pending' RETURNING id",
+            (teacher.teacher_id, doc_id))).fetchall()
+    return Approved(approved=len(rows))
 
 
 @router.post("/documents/{doc_id}/publish", response_model=CurationDocument)
@@ -203,9 +326,10 @@ async def preview(request: Request, body: PreviewRequest, teacher: UserContext =
     ctx = TurnContext(mode="teach", session_id=uuid.uuid4(), student_id=uuid.uuid4(), grade=rows[0][0],
                       lesson_id=body.lesson_id)
     async with tracing.trace("preview", input=f"{rows[0][2]} — phần {body.part}") as t:
-        reply = await learning.teach_part(ctx, request.app.state.agents, parts, body.part, preview=True,
-                                          hook_ideas=[h.spoken for h in suggest_hooks(rows[0][1], rows[0][2],
-                                                                                        body.lesson_id)]
-                                          if body.part == 1 else None)
+        first = body.part == 1  # ý 1: câu dẫn từ tình huống mở đầu của sách, như khi học sinh vào bài
+        reply = await learning.teach_part(
+            ctx, request.app.state.agents, parts, body.part, preview=True,
+            opening=await lesson_opening(body.lesson_id) if first else None,
+            hook_ideas=await learning.topical_hooks(body.lesson_id, rows[0][2]) if first else None)
         t.output = reply.answer
     return Preview(part=body.part, parts=len(parts), answer=reply.answer, sentences=reply.sentences)

@@ -53,7 +53,8 @@ async def run(args, deps: Deps) -> int:
     print(f"document {doc_id}: ready\n"
           f"  pages {s.pages} (OCR {s.ocr_pages}) | lessons {s.lessons} (from {s.lesson_source})\n"
           f"  text chunks {s.text_chunks} | figure chunks {s.figure_chunks} (pending review) | "
-          f"skipped figures {s.skipped_figures} | decorative {s.decorative_figures}")
+          f"skipped figures {s.skipped_figures} | decorative {s.decorative_figures}\n"
+          f"  outlined lessons {s.outlined_lessons}/{s.lessons}")
     return 0
 
 

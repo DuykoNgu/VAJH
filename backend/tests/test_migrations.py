@@ -25,7 +25,7 @@ def recorded(url):
         return [r[0] for r in conn.execute("SELECT filename FROM schema_migrations ORDER BY 1")]
 
 
-ALL = ["000_init", "001_student_language_agent_name", "002_embedding_1024", "003_document_processing", "004_document_publishing", "005_traces"]
+ALL = ["000_init", "001_student_language_agent_name", "002_embedding_1024", "003_document_processing", "004_document_publishing", "005_traces", "006_lesson_points"]
 
 
 def test_fresh_database_applies_and_records_every_file(scratch_url):

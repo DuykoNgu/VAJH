@@ -21,7 +21,9 @@ from app.ingestion.chunking import chunk_document, embedding_text
 from app.ingestion.figures import Figure, extract_figures
 from app.ingestion.lessons import LessonRange, segment
 from app.ingestion import scan
+from app.ingestion.progress import Progress
 from app.ingestion.pdf import bookmarks, open_pdf, page_texts
+from app.outline import outline_document
 from app.storage import relational
 from app.storage.files import FileStore, make_file_store
 from app.tools import FigureDescription, describe_figure, read_document
@@ -58,6 +60,7 @@ class Summary:
     figure_chunks: int
     skipped_figures: int
     decorative_figures: int
+    outlined_lessons: int = 0  # bài đã có dàn ý giảng
 
 
 async def _execute(sql: str, params=()) -> None:
@@ -97,6 +100,14 @@ async def process_document(document_id: UUID, deps: Deps) -> Summary:
 
 
 async def _process_document(document_id: UUID, deps: Deps) -> Summary:
+    status = Progress(deps.settings.redis_url, document_id)  # bước đang chạy, cho trang kiểm duyệt
+    try:
+        return await _run(document_id, deps, status)
+    finally:
+        await status.close()
+
+
+async def _run(document_id: UUID, deps: Deps, status: Progress) -> Summary:
     s = deps.settings
     step, pdf = "load", None
     try:
@@ -122,6 +133,8 @@ async def _process_document(document_id: UUID, deps: Deps) -> Summary:
         step = "lessons"
 
         log.info("step", extra={"step": step})
+
+        await status.report("Đang chia bài theo mục lục")
         reuse_lessons = bool(lessons)  # xử lý lại: giữ nguyên bài học (và id) đã có
         source = "existing"
         if not reuse_lessons:
@@ -133,6 +146,7 @@ async def _process_document(document_id: UUID, deps: Deps) -> Summary:
         log.info("step", extra={"step": step})
         found: list[Figure] = []
         for page in pdf:
+            await status.report(f"Đang tìm hình trang {page.number + 1}/{pdf.page_count}")
             if _lesson_of(page.number + 1, lessons) is None:
                 continue  # bìa, lời nói đầu, mục lục: không giảng → không tốn lượt mô tả hình, không chặn xuất bản
             if scan.is_scanned(page):  # cả trang là ảnh: model bố cục khoanh hình (tách nét vẽ không dùng được)
@@ -144,10 +158,10 @@ async def _process_document(document_id: UUID, deps: Deps) -> Summary:
                                                "seconds": round(time.perf_counter() - started, 2)})
             else:
                 found += await asyncio.to_thread(extract_figures, page, s.figure_min_area_ratio)
-        skipped = 0
+        skipped = described_count = 0
 
         async def describe(fig: Figure) -> FigureDescription | None:
-            nonlocal skipped
+            nonlocal skipped, described_count
             async with limit:
                 try:
                     return await describe_figure(deps.llm, fig.png, texts[fig.page - 1])
@@ -156,6 +170,11 @@ async def _process_document(document_id: UUID, deps: Deps) -> Summary:
                     log.warning("figure skipped", extra={"document_id": str(document_id), "page": fig.page,
                                                          "error": str(e)})
                     return False
+                finally:
+                    described_count += 1
+                    await status.report(f"Đang mô tả hình {described_count}/{len(found)}")
+
+        await status.report(f"Đang mô tả hình 0/{len(found)}")
 
         described = await asyncio.gather(*(describe(f) for f in found))
         figures = [(f, d) for f, d in zip(found, described, strict=True) if d]
@@ -168,6 +187,8 @@ async def _process_document(document_id: UUID, deps: Deps) -> Summary:
         step = "embed"
 
         log.info("step", extra={"step": step})
+
+        await status.report("Đang tạo embedding")
         vectors = await deps.embeddings.embed(
             [embedding_text(c.content, lessons[c.lesson].title if c.lesson is not None else None) for c in text_chunks]
             + [d.description for _, d in figures])
@@ -175,6 +196,8 @@ async def _process_document(document_id: UUID, deps: Deps) -> Summary:
         step = "store"
 
         log.info("step", extra={"step": step})
+
+        await status.report("Đang lưu")
         async with relational.transaction() as conn:
             if not reuse_lessons:
                 ids = []
@@ -199,6 +222,18 @@ async def _process_document(document_id: UUID, deps: Deps) -> Summary:
             await conn.execute(
                 "UPDATE documents SET status = 'ready', error = NULL, processed_pages = page_count,"
                 " skipped_figures = %s, updated_at = now() WHERE id = %s", (skipped, document_id))
+        outlined = 0
+        if s.outline_on_ingest:  # tài liệu đã sẵn sàng; dàn ý lỗi thì bài đó giảng theo đoạn SGK đã lọc nhiễu
+            step = "outline"
+            log.info("step", extra={"step": step})
+            try:
+                async def outlined_one(done: int, total: int) -> None:
+                    await status.report(f"Đang rút dàn ý {done}/{total} bài")
+
+                outlined = sum(n > 0 for _, n in await outline_document(deps.llm, document_id, s.llm_concurrency,
+                                                                        on_lesson=outlined_one))
+            except Exception as e:
+                log.warning("outline step failed", extra={"document_id": str(document_id), "error": str(e)})
     except IngestionError:
         raise
     except Exception as e:
@@ -211,6 +246,6 @@ async def _process_document(document_id: UUID, deps: Deps) -> Summary:
     for prefix in {k.rsplit("/", 1)[0] for k in old_figure_keys} - {f"fig/{document_id}/{run}"}:
         await deps.files.delete_prefix(prefix + "/")  # ảnh của lần xử lý trước, giờ không chunk nào dùng
     summary = Summary(str(document_id), page_count, ocr_pages, len(lessons), source, len(text_chunks),
-                      len(figures), skipped, decorative)
+                      len(figures), skipped, decorative, outlined)
     log.info("document ingested", extra=asdict(summary))
     return summary

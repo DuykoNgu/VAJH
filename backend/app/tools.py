@@ -30,7 +30,8 @@ OCR_PROMPT = (
 OCR_FIX_SYSTEM = (
     "Đây là chữ do OCR đọc từ một trang sách giáo khoa tiếng Việt. OCR thường làm mất số mũ, căn, phân số, chỉ số và "
     "sai dấu tiếng Việt. Sửa lại cho đúng theo ngữ cảnh: số mũ viết x^2, căn viết sqrt(2), phân số a/b; sửa chính tả. "
-    "Bỏ chữ chìm (watermark) và số trang lẻ loi. KHÔNG thêm, bớt hay diễn giải nội dung. Chỉ trả lại văn bản đã sửa."
+    "Bỏ chữ chìm (watermark) và số trang lẻ loi. Không dùng LaTeX hay ký hiệu như \\frac, \\( \\). KHÔNG thêm, bớt "
+    "hay diễn giải nội dung. Chỉ trả lại văn bản đã sửa."
 )
 
 

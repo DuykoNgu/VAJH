@@ -4,6 +4,8 @@ Học sinh hỏi chen: Orchestrator → Knowledge → (Vision) → Tutor. Kiểm
 Mỗi agent là module riêng theo hợp đồng chung (app/agents/base.py); file này chỉ điều phối, lưu tin nhắn
 (chỉ transcript, không lưu audio) và trả về câu trả lời đã tách câu cho TTS kèm dấu vết các agent đã chạy.
 """
+import asyncio
+import contextvars
 import re
 from dataclasses import dataclass, field, replace
 from uuid import UUID
@@ -17,17 +19,24 @@ from app.agents.tutor import REFUSED, TutorAgent
 from app.agents.vision import VisionAgent
 from app.ai.embeddings import EmbeddingClient
 from app.ai.llm import LLMClient
+from app.config import get_settings
 from app.hooks import suggest_hooks
 from app.identity import UserContext
 from app.storage import relational
-from app.teaching import Part, get_part, lesson_parts, set_part, store_check_question
+from app.teaching import Part, get_part, lesson_opening, lesson_parts, set_part, store_check_question
 
 DISCLAIMER = "Mô tả hình này chưa được thầy cô kiểm duyệt."
-NEXT_PART = "Em nói tiếp để học phần sau nhé."
+NEXT_PART = "Em nói tiếp để học ý tiếp theo nhé."
 TO_SUMMARY = "Em nói tiếp để mình tóm tắt cả bài nhé."
 OFFER_QUIZ = "Em muốn làm 3 câu kiểm tra không? Em nói kiểm tra mình nhé."
 HISTORY_LIMIT = 8
 SENTENCE = re.compile(r"(?<=[.!?…])\s+")
+NUMBER_WORDS = ("một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín", "mười")
+
+
+def roadmap(parts: list[Part]) -> str:
+    """"một, Đơn thức là gì; hai, Thu gọn đơn thức; …": báo trước lộ trình để học sinh nghe biết bài đi tới đâu."""
+    return "; ".join(f"{NUMBER_WORDS[i] if i < len(NUMBER_WORDS) else i + 1}, {p.title}" for i, p in enumerate(parts))
 
 
 class SessionError(Exception):
@@ -133,7 +142,11 @@ async def save_turn(session_id: UUID, question: str | None, agent: str, answer: 
                            (session_id, agent, answer))
 
 
+CITATION = re.compile(r"\s*\[\d+(?:\s*[,–-]\s*\d+)*\]")
+
+
 def _reply(answer: str, trace: list[TraceStep], citations=(), mode="chat") -> TurnReply:
+    answer = CITATION.sub("", answer)  # "[2]": số đoạn sách model lỡ viết vào lời nói; trích dẫn đã nằm trong citations
     return TurnReply(answer, split_sentences(answer), trace, list(citations), mode)
 
 
@@ -169,19 +182,45 @@ async def begin_lesson(session_id: UUID, user: UserContext, lesson_id: UUID | No
             reply = _reply(f"{greeting} Bài {title} chưa có nội dung trong sách. Em chọn bài khác nhé.", [])
         else:
             ctx = TurnContext.for_student(user, session_id=session_id, lesson_id=lesson_id, text=title)
-            subject = (await _one("SELECT d.subject FROM lessons l JOIN documents d ON d.id = l.document_id"
-                                  " WHERE l.id = %s", (lesson_id,)))[0]
-            ideas = [h.spoken for h in suggest_hooks(subject, title, lesson_id)]
-            reply = await teach_part(ctx, agents, parts, 1,
-                                     intro=f"{greeting} Hôm nay mình học {title}. Bài có {len(parts)} phần.",
-                                     hook_ideas=ideas)
+            if parts[0].title:  # theo dàn ý: nói trước lộ trình các ý
+                intro = f"{greeting} Hôm nay mình học {title}. Bài có {len(parts)} ý: {roadmap(parts)}."
+            else:
+                intro = f"{greeting} Hôm nay mình học {title}. Bài có {len(parts)} phần."
+            reply = await teach_part(ctx, agents, parts, 1, intro=intro, opening=await lesson_opening(lesson_id),
+                                     hook_ideas=await topical_hooks(lesson_id, title))
     await save_turn(session_id, None, reply.trace[-1].agent if reply.trace else "tutor", reply.answer)
     return reply
 
 
-async def teach_part(ctx: TurnContext, agents: Registry, parts: list[Part], number: int, intro: str = "",
-                     hook_ideas: list[str] | None = None, preview: bool = False) -> TurnReply:
-    """preview=True: giáo viên nghe thử, không lưu câu hỏi kiểm tra và không đổi tiến độ."""
+async def topical_hooks(lesson_id: UUID, title: str) -> list[str]:
+    """Câu nói trong kho gợi ý CHỈ khi đúng chủ đề bài (vd. Descartes cho bài đồ thị); câu chung chung thì không dùng."""
+    subject = (await _one("SELECT d.subject FROM lessons l JOIN documents d ON d.id = l.document_id WHERE l.id = %s",
+                          (lesson_id,)))[0]
+    return [h.spoken for h in suggest_hooks(subject, title, lesson_id, topical_only=True)]
+
+
+def _opening_task(opening: str | None, hook_ideas: list[str]) -> str:
+    if opening:  # tình huống mở đầu của sách: cụ thể, có số liệu, dẫn thẳng vào bài
+        return (" Đây là phần MỞ ĐẦU bài. `hook`: kể NGẮN (1 đến 2 câu, giữ các con số) tình huống mở đầu của sách sau "
+                f"đây rồi nói bài học sẽ giúp trả lời nó; không ẩn dụ, không kể về chương: «{opening}»")
+    task = (" Đây là phần MỞ ĐẦU bài. `hook`: MỘT câu nói thẳng bài này giúp em làm được gì, cụ thể; không ẩn dụ chung "
+            "chung. Nếu dùng một câu nói của người khác thì KHÔNG gán cho người thật có tên khi em không chắc họ đã nói.")
+    if hook_ideas:
+        task += " Có thể dùng nguyên văn một câu đúng chủ đề dưới đây:\n" + "\n".join(f"- {idea}" for idea in hook_ideas)
+    return task
+
+
+@dataclass
+class Prepared:
+    """Phần LLM của việc giảng một ý (Vision + Tutor), chưa ghi gì: soạn ngay hoặc soạn sẵn từ lượt trước."""
+    taught: AgentResult
+    evidence: tuple[Evidence, ...]
+    figure: Evidence | None
+    trace: list[TraceStep]
+
+
+async def prepare_part(ctx: TurnContext, agents: Registry, parts: list[Part], number: int,
+                       hook_ideas: list[str] | None = None, opening: str | None = None) -> Prepared:
     part = parts[number - 1]
     title = part.evidence[0].lesson_title or "bài học"
     trace: list[TraceStep] = []
@@ -190,25 +229,69 @@ async def teach_part(ctx: TurnContext, agents: Registry, parts: list[Part], numb
         seen = await final(agents.get("vision"), replace(ctx, evidence=evidence))
         evidence, figure = tuple(seen.handoff.payload["evidence"]), seen.handoff.payload.get("figure")
         trace.append(TraceStep("vision", seen.handoff.reason))
-    task = f"Giảng phần {number} trên {len(parts)} của {title}."
-    if hook_ideas is not None:  # mở đầu bài: Tutor viết câu dẫn (dùng gợi ý hoặc tự nghĩ), các phần sau để trống
-        task += (" Đây là phần MỞ ĐẦU bài: viết `hook` là MỘT câu dẫn ngắn, gây tò mò, gợi hình ảnh, liên quan đến bài "
-                 "(câu nói, câu chuyện, so sánh đời thường hoặc một cảnh tưởng tượng), rồi câu ĐẦU của explanation nối "
-                 "câu dẫn với ý của phần này. Có thể dùng nguyên văn một gợi ý dưới đây nếu hợp, hoặc tự nghĩ câu khác "
-                 "cho mới mẻ. Nếu TỰ NGHĨ một câu nói thì KHÔNG gán cho người thật có tên; hãy viết 'Có người từng ví…', "
-                 "'Người xưa có câu…' hoặc dùng một nhân vật tưởng tượng. Gợi ý:\n"
-                 + "\n".join(f"- {idea}" for idea in hook_ideas))
+        if part.title:  # theo dàn ý: kiến thức là chính, hình minh hoạ đứng sau
+            evidence = tuple(e for e in evidence if e.kind == "text") + tuple(e for e in evidence if e.kind == "figure")
+    if part.title:
+        task = (f"Giảng ý {number} trên {len(parts)} của {title}: {part.title}. Nói thẳng kiến thức trong đoạn [1].")
+        if part.question:
+            task += (f" `check_question`: hỏi đúng câu sau, có thể nói lại cho dễ nghe nhưng giữ nguyên nội dung: "
+                     f"«{part.question}». `expected_answer`: «{part.answer}».")
+    else:
+        task = f"Giảng phần {number} trên {len(parts)} của {title}."
+    if hook_ideas is not None:
+        task += _opening_task(opening, hook_ideas)
     taught = await final(agents.get("tutor"), replace(ctx, mode="teach", evidence=evidence, text=task))
-    trace.append(TraceStep("tutor", f"giảng phần {number}/{len(parts)}"))
+    trace.append(TraceStep("tutor", f"giảng {'ý' if part.title else 'phần'} {number}/{len(parts)}"))
+    return Prepared(taught, evidence, figure, trace)
+
+
+# Soạn sẵn ý kế tiếp trong lúc học sinh trả lời câu hỏi kiểm tra → nói "tiếp" là có ngay (không chờ Tutor ~3-7 s).
+# ponytail: giữ trong bộ nhớ tiến trình API; khởi động lại thì mất (ý đó được soạn bình thường), tối đa AHEAD_LIMIT.
+_AHEAD: dict[tuple[UUID, int], asyncio.Task] = {}
+AHEAD_LIMIT = 200
+
+
+def _prepare_ahead(ctx: TurnContext, agents: Registry, parts: list[Part], number: int) -> None:
+    if number > len(parts) or not get_settings().prefetch_parts:
+        return
+    while len(_AHEAD) >= AHEAD_LIMIT:  # phiên bỏ dở: bỏ việc soạn sẵn cũ nhất
+        _AHEAD.pop(next(iter(_AHEAD))).cancel()
+    # Context mới: không gắn vào trace của lượt hiện tại (trace đó đã lưu khi lượt kết thúc)
+    _AHEAD[(ctx.session_id, number)] = asyncio.create_task(prepare_part(ctx, agents, parts, number),
+                                                           context=contextvars.Context())
+
+
+async def _take_ahead(ctx: TurnContext, number: int) -> Prepared | None:
+    task = _AHEAD.pop((ctx.session_id, number), None)
+    if task is None:
+        return None
+    try:
+        return await task
+    except Exception:  # soạn sẵn lỗi → soạn lại bình thường
+        return None
+
+
+async def teach_part(ctx: TurnContext, agents: Registry, parts: list[Part], number: int, intro: str = "",
+                     hook_ideas: list[str] | None = None, preview: bool = False, opening: str | None = None,
+                     prepared: Prepared | None = None) -> TurnReply:
+    """preview=True: giáo viên nghe thử, không lưu câu hỏi kiểm tra và không đổi tiến độ.
+    hook_ideas khác None (kể cả rỗng) = phần mở đầu bài: Tutor viết câu dẫn, ưu tiên tình huống mở đầu `opening`.
+    prepared: kết quả đã soạn sẵn (không gọi lại LLM)."""
+    part = parts[number - 1]
+    prepared = prepared or await prepare_part(ctx, agents, parts, number, hook_ideas, opening)
+    taught, evidence, figure, trace = prepared.taught, prepared.evidence, prepared.figure, list(prepared.trace)
     if taught.handoff is not None and not preview:  # Tutor chuyển câu hỏi kiểm tra cho Assessment
         await store_check_question(ctx.session_id, ctx.student_id, ctx.lesson_id, taught.handoff.payload["question"],
-                                   taught.handoff.payload["expected"], "figure" if part.kind == "figure" else "concept")
+                                   part.answer or taught.handoff.payload["expected"],  # đáp án của dàn ý (theo sách)
+                                   "figure" if part.kind == "figure" else "concept")
         trace.append(TraceStep("assessment", "đặt câu hỏi kiểm tra"))
     if not preview:
         await set_part(ctx.session_id, number)
+        _prepare_ahead(ctx, agents, parts, number + 1)
     hook = taught.handoff.payload.get("hook", "") if taught.handoff and hook_ideas is not None else ""
     answer = _with_disclaimer(taught.speech_text, figure, taught.citations)
-    return _reply(" ".join(x for x in (intro, hook, f"Phần {number}.", answer) if x), trace,
+    label = f"Ý {number}: {part.title}." if part.title else f"Phần {number}."
+    return _reply(" ".join(x for x in (intro, hook, label, answer) if x), trace,
                   _citations(taught.citations, evidence), "teach")
 
 
@@ -216,9 +299,14 @@ async def next_part(ctx: TurnContext, agents: Registry, trace: list[TraceStep]) 
     parts = await lesson_parts(ctx.lesson_id)
     done = await get_part(ctx.session_id)
     if done < len(parts):
-        reply = await teach_part(ctx, agents, parts, done + 1)
-        return replace(reply, trace=trace + reply.trace)
-    # Hết bài: tóm tắt từ toàn bộ nội dung bài rồi mời làm bài kiểm tra
+        prepared = await _take_ahead(ctx, done + 1)
+        reply = await teach_part(ctx, agents, parts, done + 1, prepared=prepared)
+        steps = [replace(t, summary=f"{t.summary} (soạn sẵn)") if prepared and t.agent == "tutor" else t
+                 for t in reply.trace]
+        return replace(reply, trace=trace + steps)
+    if parts and parts[0].title:  # theo dàn ý: tóm tắt chính là các ý, không cần LLM, không lan man
+        return _reply(f"Mình đã học hết bài. Bài có {len(parts)} ý: {roadmap(parts)}. {OFFER_QUIZ}", trace)
+    # Hết bài (giảng theo đoạn): tóm tắt từ nội dung bài rồi mời làm bài kiểm tra
     evidence = tuple(e for p in parts for e in p.evidence)[:8]
     summary = await final(agents.get("tutor"), replace(
         ctx, evidence=evidence, text="Tóm tắt ngắn gọn những ý chính của cả bài cho học sinh (3-4 câu)."))

@@ -39,7 +39,9 @@ OPEN_SYSTEM = (
     "giọng nói). `score`: 1 nếu đúng ý, 0.5 nếu đúng một phần, 0 nếu sai, không biết, hoặc muốn bỏ qua ('tiếp', 'không "
     "biết'). `feedback`: MỘT câu khích lệ ngắn, ấm áp. `re_explanation`: nếu score < 1, giảng lại 1-3 câu ngắn bằng "
     "hình ảnh tưởng tượng để học sinh hiểu đáp án; nếu score = 1 để rỗng. `is_student_question` = true CHỈ khi học "
-    "sinh không trả lời mà đặt câu hỏi khác hoặc ra lệnh khác (muốn làm bài kiểm tra, đổi bài...). " + LISTENING_STYLE
+    "sinh không trả lời mà đặt câu hỏi khác hoặc ra lệnh khác (muốn làm bài kiểm tra, đổi bài...). Câu trả lời mong đợi "
+    "chỉ để THAM KHẢO và có thể sai: tự giải lại câu hỏi; nếu học sinh đúng theo kiến thức thì cho 1 điểm, và giảng lại "
+    "theo đáp án đúng. " + LISTENING_STYLE
 )
 
 
@@ -121,8 +123,15 @@ class AssessmentAgent:
             return NO_LESSON
         chunks = await _rows("SELECT kind, content FROM chunks WHERE lesson_id = %s"
                              " AND coalesce(review, 'approved') <> 'rejected' ORDER BY page, id", (ctx.lesson_id,))
-        material = "\n\n".join(("MÔ TẢ HÌNH: " if kind == "figure" else "") + content
-                               for kind, content in chunks)[:LESSON_CHARS]
+        points = await _rows("SELECT title, content, question, answer FROM lesson_points WHERE lesson_id = %s"
+                             " AND position > 0 ORDER BY position", (ctx.lesson_id,))
+        if points:  # theo dàn ý: kiến thức cốt lõi + bài luyện tập của sách, không lẫn nhiễu của đoạn SGK thô
+            material = "\n\n".join([f"Ý: {title}. {content}" + (f" Luyện tập: {q} Đáp án: {a}" if q else "")
+                                     for title, content, q, a in points]
+                                    + [f"MÔ TẢ HÌNH: {content}" for kind, content in chunks if kind == "figure"])
+        else:
+            material = "\n\n".join(("MÔ TẢ HÌNH: " if kind == "figure" else "") + content for kind, content in chunks)
+        material = material[:LESSON_CHARS]
         questions = await self._draft(material, any(kind == "figure" for kind, _ in chunks)) if chunks else []
         if len(questions) < 2:
             return FAILED

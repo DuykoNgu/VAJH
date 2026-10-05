@@ -41,10 +41,14 @@ HOOKS: tuple[Hook, ...] = (
 )
 
 
-def suggest_hooks(subject: str | None, lesson_title: str, lesson_id: UUID, k: int = 3) -> list[Hook]:
-    """Tối đa k gợi ý: đúng chủ đề bài → đúng môn → câu chung; xoay vòng theo bài để các bài nhận gợi ý khác nhau."""
+def suggest_hooks(subject: str | None, lesson_title: str, lesson_id: UUID, k: int = 3,
+                  topical_only: bool = False) -> list[Hook]:
+    """Tối đa k gợi ý: đúng chủ đề bài → đúng môn → câu chung; xoay vòng theo bài để các bài nhận gợi ý khác nhau.
+    topical_only: chỉ câu đúng chủ đề bài (câu chung chung làm bài giảng lan man)."""
     title = normalize(lesson_title)
     topical = [h for h in HOOKS if (not h.subjects or subject in h.subjects) and any(t in title for t in h.topics)]
+    if topical_only:
+        return topical[:k]
     by_subject = [h for h in HOOKS if subject in h.subjects and h not in topical]
     general = [h for h in HOOKS if not h.subjects and h not in topical]
     shift = int(hashlib.sha256(str(lesson_id).encode()).hexdigest(), 16)

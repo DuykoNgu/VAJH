@@ -1,4 +1,5 @@
 """Hợp đồng Speech-to-Text / Text-to-Speech. Provider thật được thêm ở change `voice-loop` (sau spike S2/S3)."""
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
@@ -37,7 +38,12 @@ class STT(Protocol):
 
 
 class TTS(Protocol):
+    stream_format: str  # kiểu MIME của stream()
+
     async def synthesize(self, request: SynthesizeRequest) -> Speech: ...
+
+    def stream(self, text: str) -> AsyncIterator[bytes]:
+        """Audio của một câu, gửi dần trong lúc tổng hợp (ghép nhiều câu liên tiếp vẫn là một luồng hợp lệ)."""
 
 
 def make_stt(settings) -> STT:

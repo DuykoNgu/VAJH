@@ -4,7 +4,7 @@ import pytest
 
 from app.agents.base import Evidence
 from app.storage import cache, relational
-from app.teaching import get_part, group_parts, lesson_parts, set_part, split_ideas
+from app.teaching import clean_ideas, get_part, group_parts, lesson_parts, set_part, split_ideas
 
 
 def ev(i, kind="text", n=100):
@@ -52,3 +52,41 @@ async def test_part_position_per_session(infra):
     assert await get_part(sid) == 0
     await set_part(sid, 2)
     assert await get_part(sid) == 2
+
+
+BAI1 = "Bài 1. Đơn thức"
+
+
+def page(i, content, kind="text", page_no=None):
+    return Evidence(i, kind, page_no or 6 + i, content, "approved" if kind == "figure" else None, BAI1)
+
+
+def test_noise_is_filtered_when_the_lesson_has_no_outline():
+    chunks = [
+        page(1, "Chương I ĐA THỨC Ở lớp 7, các em đã học về đa thức một biến. Bài 1 ĐƠN THỨC Khái niệm, thuật ngữ "
+                "• Đơn thức • Hệ số. 1 ĐƠN THỨC VÀ ĐƠN THỨC THU GỌN Khái niệm đơn thức HĐ1 Biểu thức x^2 - 2x có "
+                "phải là đơn thức không? Vì sao?"),
+        page(2, "Vì sao? Đơn thức là biểu thức đại số chỉ gồm một số hoặc một biến, hoặc tích của chúng. "
+                "Luyện tập 1 Biểu thức nào là đơn thức? 3x^3y; -4."),
+        page(3, "Hình của bài luyện tập.", kind="figure", page_no=8),
+        page(4, "Muốn cộng hai đơn thức đồng dạng, ta cộng các hệ số và giữ nguyên phần biến. BÀI TẬP 1.1. Tính 2x + 3x."),
+    ]
+    ideas = clean_ideas(chunks, BAI1)
+    text = " ".join(e.content for e in ideas)
+    for noise in ("Chương", "lớp 7", "Khái niệm, thuật ngữ", "HĐ1", "Vì sao?", "Luyện tập", "1.1.", "Tính 2x"):
+        assert noise not in text, noise
+    assert "Khái niệm đơn thức Đơn thức là biểu thức đại số" in text            # tiêu đề dính vào định nghĩa
+    assert "Muốn cộng hai đơn thức đồng dạng" in text
+    assert [e.kind for e in ideas] == ["text"] and ideas[0].chunk_id == 1     # hình trong bài tập bị bỏ
+
+
+def test_overlap_between_chunks_is_not_taught_twice():
+    shared = "Số 0 cũng được coi là một đơn thức và nó không có bậc."
+    ideas = clean_ideas([page(1, f"Bậc là tổng số mũ của các biến. {shared}"),
+                         page(2, f"{shared} Hai đơn thức đồng dạng có cùng phần biến.")], BAI1)
+    assert " ".join(e.content for e in ideas).count(shared) == 1
+
+
+def test_lesson_without_heading_keeps_everything_that_is_not_an_exercise():
+    ideas = clean_ideas([page(1, "Hàm số bậc nhất là hàm số y = ax + b với a khác 0.")], "Bài 9. Hàm số")
+    assert ideas[0].content == "Hàm số bậc nhất là hàm số y = ax + b với a khác 0."

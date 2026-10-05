@@ -1,4 +1,8 @@
-"""Orchestrator Agent: hiểu yêu cầu của học sinh và quyết định agent nào làm tiếp (structured output)."""
+"""Orchestrator Agent: hiểu yêu cầu của học sinh và quyết định agent nào làm tiếp (structured output).
+
+Lệnh ngắn rõ nghĩa ("tiếp", "kiểm tra mình") được nhận ra bằng từ khoá, không gọi LLM (đỡ ~3 s mỗi lượt học).
+"""
+import re
 from typing import Literal
 
 from pydantic import BaseModel
@@ -19,6 +23,21 @@ SYSTEM = (
 )
 
 
+QUICK = {
+    "next": {"tiếp", "tiếp đi", "tiếp tục", "tiếp theo", "học tiếp", "giảng tiếp", "đi tiếp", "sang ý sau",
+             "ý tiếp", "ý tiếp theo", "ý sau", "phần tiếp", "phần tiếp theo", "phần sau", "sang phần sau"},
+    "quiz": {"kiểm tra", "kiểm tra mình", "kiểm tra đi", "kiểm tra em", "làm bài kiểm tra", "làm kiểm tra"},
+}
+POLITE = re.compile(r"\b(nhé|nha|ạ|à|ơi|lusia|đi ạ|giúp mình|giúp em)\b")
+
+
+def quick_intent(text: str | None) -> str | None:
+    """"Tiếp nhé." → next, "Kiểm tra mình đi ạ" → quiz; câu khác → None (để LLM hiểu)."""
+    words = re.sub(r"[^\w\s]", " ", (text or "").lower())
+    words = " ".join(POLITE.sub(" ", words).split())
+    return next((intent for intent, phrases in QUICK.items() if words in phrases), None)
+
+
 class Route(BaseModel):
     intent: Literal["explain", "figure", "quiz", "next", "other"]
     query: str
@@ -35,6 +54,11 @@ class OrchestratorAgent:
         self.llm = llm
 
     async def run(self, ctx: TurnContext):
+        if intent := quick_intent(ctx.text):  # lệnh ngắn: quyết định ngay, không gọi LLM
+            target = "assessment" if intent == "quiz" else "knowledge"
+            yield AgentResult(self.name, "", handoff=Handoff(target, intent,
+                                                             {"intent": intent, "query": ctx.text or "", "quick": True}))
+            return
         messages = history_messages(ctx) + [{"role": "user", "content": ctx.text or ""}]
         result = await self.llm.complete("orchestrator", messages, system=SYSTEM, schema=Route)
         if isinstance(result, Refusal):

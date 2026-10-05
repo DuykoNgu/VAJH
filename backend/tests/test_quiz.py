@@ -74,5 +74,16 @@ async def test_invalid_draft_retried_then_rejected(api, make_student, textbook, 
     make_student("minh8a")
     bad = {"questions": [{"prompt": "x", "choices": ["a", "b"], "correct": "c", "explanation": "", "focus": "concept"}]}
     sid = await session(api, textbook["lessons"][2], db)
-    reply = await ask(api, sid, "kiểm tra", QUIZ_ROUTE, bad, bad)
+    reply = await ask(api, sid, "kiểm tra", bad, bad)  # "kiểm tra": Orchestrator nhận ra ngay, không gọi LLM
     assert reply["mode"] == "chat" and "chưa tạo được" in reply["answer"]
+
+
+async def test_quiz_is_drafted_from_the_outline_when_there_is_one(api, make_student, textbook, db):
+    make_student("minh8a")
+    db.execute("INSERT INTO lesson_points (lesson_id, position, title, content, question, answer) VALUES"
+               " (%s, 1, 'Đồ thị là đường thẳng', 'Đồ thị của y = ax + b là một đường thẳng.', 'Đường gì?', 'thẳng')",
+               (textbook["lessons"][2],))
+    await start_quiz(api, textbook, db)
+    material = api.app.state.llm.calls[-1]["messages"][0]["content"]
+    assert material.startswith("Ý: Đồ thị là đường thẳng. Đồ thị của y = ax + b") and "Luyện tập: Đường gì?" in material
+    assert "MÔ TẢ HÌNH" in material

@@ -18,13 +18,14 @@ class Route(BaseModel):
 ROUTE_EFFORTS = {
     "orchestrator": "low",
     "knowledge": "low",
-    "tutor": "medium",
-    "assessment": "medium",
+    "tutor": "low",  # đo trên máy demo: medium 19,6 s / low 3,1 s cho cùng một ý, lời giảng như nhau
+    "assessment": "low",  # chấm câu trả lời: medium 3,3 s / low ~2 s, chấm vẫn đúng
     "vision_live": "medium",
     "vision_offline": "high",
     "document": "medium",
-    "ocr_cleanup": "low",
-    "toc": "low",  # đọc mục lục: effort medium mất nhiều phút với SGK thật, low ~20 s và vẫn đúng  # sửa chữ OCR local (chỉ gửi chữ): việc máy móc, không cần suy luận nhiều
+    "ocr_cleanup": "low",  # sửa chữ OCR local (chỉ gửi chữ): việc máy móc, không cần suy luận nhiều
+    "toc": "low",  # đọc mục lục: effort medium mất nhiều phút với SGK thật, low ~20 s và vẫn đúng
+    "outline": "low",  # dàn ý giảng (một lượt / bài): low ~6 s, đúng 5 ý của Bài 1 Toán 8
     "student_model": "medium",
 }
 ANTHROPIC_DEFAULT_MODEL = "claude-opus-5-5"
@@ -80,9 +81,11 @@ class Settings(BaseSettings):
     stt_provider: Literal["fake"] = "fake"
     tts_provider: Literal["zerotts", "fake"] | None = None
     zerotts_model_dir: Path = BACKEND_DIR / "data" / "models" / "zerotts"
+    prefetch_parts: bool = True  # soạn sẵn ý kế tiếp trong lúc học sinh trả lời câu hỏi kiểm tra
+    outline_on_ingest: bool = True  # nạp sách xong thì rút dàn ý giảng cho từng bài (một lượt LLM / bài)
     local_ocr: bool = True  # trang scan: OCR của macOS + LLM chỉ sửa chữ (rẻ hơn ~7 lần token vào); False → OCR bằng LLM
     layout_model_path: Path = BACKEND_DIR / "data" / "models" / "doclayout" / "doclayout_yolo_docstructbench_imgsz1024.pt"
-    zerotts_voice: str = "maichi"
+    zerotts_voice: str = "baotrang"
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
     openai_llm_model: str | None = None

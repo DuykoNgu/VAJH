@@ -156,6 +156,6 @@ async def test_one_usage_log_record_without_secrets(caplog):
         await llm_with(provider).complete("tutor", USER)
     (r,) = [r for r in caplog.records if r.name == "lusia.llm"]
     assert (r.route, r.model, r.effort, r.input_tokens, r.output_tokens, r.outcome) == \
-        ("tutor", MODEL, "medium", 11, 7, "ok")
+        ("tutor", MODEL, "low", 11, 7, "ok")
     dumped = json.dumps(r.__dict__, default=str)
     assert "sk-test-secret" not in dumped and "Giải thích" not in dumped
