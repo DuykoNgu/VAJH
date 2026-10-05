@@ -40,6 +40,8 @@
 - [🗄️ Cơ sở dữ liệu (Database Schema)](#️-cơ-sở-dữ-liệu-database-schema)
 - [🛡️ Trí tuệ nhân tạo có trách nhiệm (Responsible AI)](#️-trí-tuệ-nhân-tạo-có-trách-nhiệm-responsible-ai)
 - [📦 Hướng dẫn cài đặt & Khởi chạy (Getting Started)](#-hướng-dẫn-cài-đặt--khởi-chạy-getting-started)
+  - [🚀 Lựa chọn 1: Triển khai toàn diện với Docker (Khuyên dùng)](#-lựa-chọn-1-triển-khai-toàn-diện-với-docker-khuyên-dùng)
+  - [🛠️ Lựa chọn 2: Phát triển cục bộ kết hợp (Docker Infra + Local venv)](#️-lựa-chọn-2-phát-triển-cục-bộ-kết-hợp-docker-dịch-vụ-nền--local-python-venv)
 - [🗺️ Lộ trình phát triển (Roadmap)](#️-lộ-trình-phát-triển-roadmap)
 - [👥 Đội ngũ phát triển (Our Team)](#-đội-ngũ-phát-triển-our-team)
 
@@ -229,25 +231,45 @@ flowchart LR
 
 Trên một laptop, dùng **Google Chrome** (nhận giọng nói tiếng Việt qua Web Speech API; cần Internet).
 
+#### 🚀 Cách 1: Chạy nhanh bằng Docker (Toàn bộ Backend trong Container)
+
 ```bash
-docker compose up -d                                   # Postgres + Redis
+# 1. Khởi chạy trọn bộ backend stack (Postgres + pgvector, Redis, Migrate, FastAPI, Arq Worker)
+docker compose --profile app up -d --build
+
+# 2. Khởi tạo tài khoản & lớp học mẫu (giáo viên colan, học sinh minh8a, hana8a)
+docker compose --profile app exec api python -m app.seed
+
+# 3. Tải model giọng đọc ZeroTTS (~900 MB) và model bố cục DocLayout-YOLO (~40 MB) (chỉ cần chạy một lần)
+docker compose --profile app exec api python -m app.voice.tts --download
+docker compose --profile app exec api python -c "from huggingface_hub import hf_hub_download as d; d('juliozhao/DocLayout-YOLO-DocStructBench', 'doclayout_yolo_docstructbench_imgsz1024.pt', local_dir='data/models/doclayout')"
+
+# 4. Nạp SGK: Tải trực tiếp qua Web UI tại http://localhost:3000/curation hoặc dùng CLI với file mẫu:
+docker cp "SGK Toán 8, tập một-mau.pdf" $(docker compose ps -q api):/app/data/files/toan8.pdf
+docker compose --profile app exec api python -m app.ingest /app/data/files/toan8.pdf --title "Toán 8 tập 1" --subject toan --grade 8
+
+# 5. Khởi chạy giao diện Frontend
+cd frontend && npm install && npm run dev              # Mở http://localhost:3000/learn
+```
+
+#### 🛠️ Cách 2: Chạy kết hợp (Docker Dịch vụ nền + Local Python venv)
+
+```bash
+docker compose up -d                                   # Chỉ bật Postgres + Redis
 cd backend && source .venv/bin/activate
-python -m app.migrate && python -m app.seed            # schema + giáo viên colan, lớp 8A, học sinh minh8a
-# ⚠️ app.migrate dùng DATABASE_URL_UNPOOLED trong .env nếu có (Neon!) — demo local: đặt cả hai biến về Postgres local
-python -m app.voice.tts --download                     # model giọng đọc ZeroTTS (~900 MB, một lần)
-python -c "from huggingface_hub import hf_hub_download as d; d('juliozhao/DocLayout-YOLO-DocStructBench', 'doclayout_yolo_docstructbench_imgsz1024.pt', local_dir='data/models/doclayout')"  # tìm hình trên sách scan (~40 MB, một lần)
+python -m app.migrate && python -m app.seed            # Schema + tài khoản demo
+python -m app.voice.tts --download                     # Model giọng đọc ZeroTTS (~900 MB, một lần)
+python -c "from huggingface_hub import hf_hub_download as d; d('juliozhao/DocLayout-YOLO-DocStructBench', 'doclayout_yolo_docstructbench_imgsz1024.pt', local_dir='data/models/doclayout')"  # Model bố cục tìm hình (~40 MB)
 python -m app.ingest ~/Downloads/toan8.pdf --title "Toán 8 tập 2" --subject toan --grade 8
-# Sách scan (mỗi trang là ảnh): OCR của macOS + LLM chỉ sửa công thức (gửi chữ, không gửi ảnh) + model bố cục tìm hình.
-# Chỉ nạp một phần sách: cắt PDF trước, giữ trang mục lục để tự chia bài (vd. Toán 8 tập một, trang 1-29 = Chương I, ~2,5 phút).
-# (trong backend/.env: OPENAI_API_KEY và OPENAI_LLM_MODEL)
-arq app.worker.WorkerSettings &                        # worker xử lý PDF tải lên từ trang kiểm duyệt
-uvicorn app.main:app --port 8000                       # đợi ~20 giây để nạp sẵn model giọng đọc + embedding
-cd ../frontend && npm run dev                          # mở http://localhost:3000/learn
+python -m app.outline <document_id>                    # Sách nạp trước khi có dàn ý: rút dàn ý giảng (~6 s / bài)
+arq app.worker.WorkerSettings &                        # Worker xử lý PDF nền
+uvicorn app.main:app --port 8000                       # Đợi nạp model giọng đọc & embedding
+cd ../frontend && npm run dev                          # Mở http://localhost:3000/learn
 ```
 
 > Nếu cổng 3000 đang bận, Next.js chạy ở 3001: thêm cổng đó cho backend bằng `FRONTEND_ORIGINS="http://localhost:3000,http://localhost:3001"`.
 
-**Lời thoại demo.** Bước 0 — giáo viên chuẩn bị tri thức trên `/curation`: tải PDF lên (hoặc mở sách đã nạp), sửa đoạn văn lỗi, kiểm tra dữ kiện từng hình rồi **Duyệt**, bấm **Nghe thử** một phần, và **Xuất bản**. Học sinh chỉ thấy tài liệu đã xuất bản; tri thức là cơ sở cố định, còn cách LUSIA diễn đạt thay đổi mỗi lần giảng.
+**Lời thoại demo.** Bước 0 — giáo viên chuẩn bị tri thức trên `/curation`: tải PDF lên (hoặc mở sách đã nạp), sửa đoạn văn lỗi, kiểm tra dữ kiện từng hình rồi **Duyệt**, xem **dàn ý giảng** của từng bài (các ý chính rút từ sách, kèm câu hỏi kiểm tra và đáp án — sửa nếu cần), bấm **Nghe thử** một ý, và **Xuất bản**. Học sinh chỉ thấy tài liệu đã xuất bản; tri thức là cơ sở cố định, còn cách LUSIA diễn đạt thay đổi mỗi lần giảng.
 
 Học sinh (không cần nhìn màn hình, không cần tìm nút nào):
 
@@ -317,7 +339,7 @@ Hackathon_VJAI/
 │   ├── tests/                 # pytest (+ sql/schema_test.sql kiểm tra ràng buộc)
 │   ├── requirements.txt
 │   └── .env.example
-├── docker-compose.yml         # Hạ tầng: Postgres + pgvector, Redis, MinIO
+├── docker-compose.yml         # Cấu hình Docker: Dịch vụ nền (Postgres, Redis) & Profile "app" (Migrate, API, Worker)
 └── docs/
     └── architecture.webp      # Sơ đồ kiến trúc hệ thống
 ```
@@ -389,59 +411,200 @@ WHERE cs.class_id = $1 AND m.mastery < 0.5;
 
 ## 📦 Hướng dẫn cài đặt & Khởi chạy (Getting Started)
 
-> ℹ️ Khung dự án (frontend + backend) đã được khởi tạo; các agent đang được phát triển trong khuôn khổ VJAH 2026.
+> ℹ️ Khung dự án (frontend + backend) đã được khởi tạo hoàn chỉnh; các agent và pipeline RAG/Voice/Vision đang được hoàn thiện trong khuôn khổ VJAH 2026.
+
+Dự án hỗ trợ **2 phương thức triển khai chính**:
+1. **🚀 Lựa chọn 1: Triển khai toàn diện với Docker (Khuyên dùng)** — Toàn bộ dịch vụ backend, cơ sở dữ liệu, hàng đợi và worker chạy trong container Docker chỉ với một lệnh. Không cần cấu hình môi trường Python trên máy host.
+2. **🛠️ Lựa chọn 2: Phát triển cục bộ kết hợp (Docker Dịch vụ nền + Local Python venv)** — Docker chạy PostgreSQL + Redis, backend chạy trực tiếp qua `virtualenv`. Phù hợp cho lập trình viên muốn debug sâu và tận dụng Apple Vision OCR bản địa trên macOS.
+
+---
 
 ### 1. Yêu cầu tiên quyết (Prerequisites)
-- Python >= 3.10
-- Node.js >= 20.9
-- Docker (Postgres + pgvector, Redis)
-- [Neon CLI](https://neon.com/docs/cli/install) (nếu dùng Neon)
-- Micro & Loa thiết bị hoạt động tốt
 
-### 2. Clone repository
+- **Docker & Docker Compose** (v2 trở lên): Cài đặt [Docker Desktop](https://www.docker.com/products/docker-desktop/) (macOS / Windows / Linux) hoặc [OrbStack](https://orbstack.dev/) (macOS).
+- **Node.js** >= 20.9 (để chạy giao diện Web Next.js).
+- **Python** >= 3.10 (chỉ cần nếu bạn chọn *Lựa chọn 2* để chạy backend trên máy host).
+- **OpenAI API Key**: Cần có API Key (hỗ trợ các model như `gpt-4o`, `gpt-4o-mini`) để các Agent suy luận và trả lời.
+- **Trình duyệt Google Chrome**: Hỗ trợ chuẩn Web Speech API (nhận diện giọng nói tiếng Việt với độ trễ thấp).
+- **Thiết bị**: Micro & Loa hoạt động tốt để giao tiếp bằng giọng nói hai chiều.
+
+---
+
+### 2. Tải mã nguồn & Cấu hình môi trường (`.env`)
 
 ```bash
 git clone https://github.com/DatTQ27/Hackathon_VJAI.git
 cd Hackathon_VJAI
+cp backend/.env.example backend/.env
 ```
 
-### 3. Dịch vụ nền & Database
+Mở file `backend/.env` và cập nhật các khóa API quan trọng:
+```ini
+# Khóa API để kích hoạt các Agent LLM
+OPENAI_API_KEY="sk-..."
+OPENAI_LLM_MODEL="gpt-4o-mini"   # hoặc gpt-4o, gpt-4o-mini
+```
 
-Tạo file môi trường (**không commit file này**) — giá trị mặc định chạy được ngay với Docker local:
+> 💡 **Lưu ý đặc biệt cho Docker:**  
+> File `docker-compose.yml` đã được cấu hình sẵn mạng nội bộ `lusia-network`: biến `DATABASE_URL` tự động trỏ đến `postgresql://lusia:lusia@postgres:5432/lusia_db` và `REDIS_URL` tự động trỏ đến `redis://redis:6379`. Bạn **không cần thay đổi** chuỗi kết nối database trong file `backend/.env` khi triển khai bằng Docker!
+
+---
+
+### 3. Khởi chạy Backend & Hạ tầng
+
+Chọn **1 trong 2** phương án dưới đây tùy thuộc vào nhu cầu của bạn:
+
+#### 🚀 Lựa chọn 1: Triển khai toàn diện với Docker (Khuyên dùng)
+
+Phương thức này đóng gói toàn bộ hệ sinh thái backend vào các container Docker độc lập, đảm bảo môi trường đồng nhất và khởi chạy tức thì chỉ với một lệnh duy nhất.
+
+##### Sơ đồ các dịch vụ trong Docker Compose
+
+```
+           [ Next.js Frontend ] (Cổng 3000 trên máy Host)
+                     │
+                     ▼
+           [ FastAPI API Container ] (Cổng 8000)
+             ├── Mount: ./backend/app (Hot-reload code)
+             ├── Mount: ./backend/data/models (Lưu trữ model TTS & Vision)
+             └── Profile: "app"
+                     │
+     ┌───────────────┼───────────────┬────────────────┐
+     ▼               ▼               ▼                ▼
+[ Postgres 16 ]  [ Redis 7 ]   [ Migrate ]      [ Worker ]
+  + pgvector       Cache &      Tự động chạy     Arq background job:
+  Cổng 5432       Queue 6379   python -m        xử lý PDF, OCR,
+                               app.migrate      trích xuất hình
+```
+
+| Tên Dịch Vụ | Tên Container | Cổng Host | Chức năng & Ghi chú |
+| :--- | :--- | :--- | :--- |
+| `postgres` | `lusia-postgres` | `5432` | PostgreSQL 16 tích hợp `pgvector`: Lưu trữ hồ sơ người dùng, tiến độ học tập và vector embedding SGK cho RAG. Tự động kiểm tra sức khỏe (`healthcheck`). |
+| `redis` | `lusia-redis` | `6379` | In-memory cache lưu phiên hội thoại học sinh và hàng đợi tác vụ nền (`arq`). |
+| `migrate` | *(chạy xong tự thoát)* | - | Khởi chạy một lần sau khi PostgreSQL sẵn sàng để tự động tạo/cập nhật cấu trúc bảng (`python -m app.migrate`). |
+| `api` | `hackathon_vjai-api-1` | `8000` | FastAPI server. Tự động tải lại khi chỉnh sửa code trong `backend/app`. |
+| `worker` | `hackathon_vjai-worker-1` | - | Background worker (`arq`) xử lý phân tích PDF, OCR sách scan, nhận diện hình ảnh và tạo embedding. |
+
+##### Bước 1: Khởi động hệ thống Backend bằng Docker Compose
+
+Chạy lệnh với profile `app` để kích hoạt cả hạ tầng và ứng dụng:
 
 ```bash
-cp backend/.env.example backend/.env
-docker compose up -d          # Postgres + pgvector (localhost:5432) và Redis (localhost:6379)
+docker compose --profile app up -d --build
 ```
 
-> Muốn chạy **cả backend trong Docker** (migrate → API :8000 → worker) thay vì venv local: `docker compose --profile app up --build`.
+Kiểm tra trạng thái các container đang chạy:
+```bash
+docker compose ps
+```
+*(Đảm bảo cả `lusia-postgres`, `lusia-redis`, container `api` và `worker` đều đang ở trạng thái `Up`)*.
 
-> Object storage (S3/MinIO) đang **tạm pending**: image MinIO công khai không còn tải được; sẽ chọn server S3 thay thế sau.
+##### Bước 2: Khởi tạo dữ liệu người dùng mẫu (Seed Data)
 
-**Database — chọn một trong hai:**
+> ⚠️ **Quan trọng:** Tiến trình `migrate` chỉ tạo khung cơ sở dữ liệu. Để đăng nhập và thử nghiệm các tính năng, bạn cần khởi tạo dữ liệu ban đầu (giáo viên `colan`, lớp `8A`, học sinh `minh8a` và `hana8a`):
 
-- **A. Postgres local (mặc định):** container `lusia-postgres` ở trên (`lusia/lusia@localhost:5432/lusia_db`).
-- **B. Neon:** cả nhóm dùng chung database trên cloud (project **VJAH**). Cần được mời vào org Neon của nhóm và chạy `neon login` một lần, sau đó:
+```bash
+docker compose --profile app exec api python -m app.seed
+```
+
+Kiểm tra nhanh kết nối API và danh tính dev:
+```bash
+curl -s http://localhost:8000/health/ready     # {"status":"ready","database":"ok","redis":"ok"}
+curl -s http://localhost:8000/me               # Trả về thông tin học sinh mặc định minh8a (tiếng Việt)
+```
+
+##### Bước 3: Tải các model AI chạy cục bộ (ZeroTTS & DocLayout-YOLO)
+
+Hệ thống sử dụng model TTS tiếng Việt tự nhiên và model thị giác để phân tích tài liệu:
+
+```bash
+# 1. Tải model giọng đọc tiếng Việt ZeroTTS (~900 MB, chỉ cần tải một lần):
+docker compose --profile app exec api python -m app.voice.tts --download
+
+# 2. Tải model nhận diện cấu trúc & hình vẽ DocLayout-YOLO (~40 MB, chỉ cần tải một lần):
+docker compose --profile app exec api python -c "from huggingface_hub import hf_hub_download as d; d('juliozhao/DocLayout-YOLO-DocStructBench', 'doclayout_yolo_docstructbench_imgsz1024.pt', local_dir='data/models/doclayout')"
+```
+
+> 💾 **Cơ chế lưu trữ Model:** Các model được lưu trữ tại `backend/data/models/` trên máy host (được mount trực tiếp vào container) và thư mục cache HuggingFace (`hf_cache` volume). Sau khi tải một lần, bạn có thể khởi động lại container hoặc rebuild image mà không cần tải lại.
+
+##### Bước 4: Nạp Sách giáo khoa & Tài liệu học tập (Ingestion)
+
+Bạn có thể nạp tài liệu vào hệ thống theo một trong hai cách:
+
+- **Cách 1 (Giao diện Web - Trực quan, khuyên dùng):**
+  Sau khi khởi chạy Frontend (Bước 4), truy cập trang Kiểm duyệt: <http://localhost:3000/curation>, chọn tệp PDF và bấm nạp. Tác vụ sẽ được đẩy vào Redis và Background Worker trong Docker sẽ xử lý tự động.
+- **Cách 2 (Dòng lệnh CLI với file mẫu có sẵn trong repo):**
+  Dự án đi kèm file SGK mẫu `SGK Toán 8, tập một-mau.pdf`. Bạn có thể nạp trực tiếp qua Docker:
   ```bash
-  cd backend && neon link && cd ..   # chọn project VJAH → ghi DATABASE_URL / DATABASE_URL_UNPOOLED vào backend/.env
+  # Sao chép file PDF mẫu vào thư mục dữ liệu của container:
+  docker cp "SGK Toán 8, tập một-mau.pdf" $(docker compose ps -q api):/app/data/files/toan8.pdf
+
+  # Chạy lệnh nạp tài liệu trực tiếp bên trong container:
+  docker compose --profile app exec api python -m app.ingest /app/data/files/toan8.pdf --title "Toán 8 tập 1" --subject toan --grade 8
   ```
 
-### 4. Backend (FastAPI)
+##### 📋 Bảng tra cứu lệnh Docker thường dùng
+
+| Thao tác | Lệnh Docker |
+| :--- | :--- |
+| **Xem logs thời gian thực của API** | `docker compose logs -f api` |
+| **Xem logs của Background Worker** | `docker compose logs -f worker` |
+| **Kiểm tra trạng thái các service** | `docker compose ps` |
+| **Mở bash shell trong container API** | `docker compose --profile app exec api bash` |
+| **Truy cập dòng lệnh PostgreSQL (`psql`)** | `docker exec -it lusia-postgres psql -U lusia -d lusia_db` |
+| **Khởi động lại API và Worker** | `docker compose --profile app restart api worker` |
+| **Tạm dừng hệ thống (giữ nguyên dữ liệu)** | `docker compose --profile app stop` |
+| **Dừng và gỡ container** | `docker compose --profile app down` |
+| **Xóa sạch container và toàn bộ volumes dữ liệu** | `docker compose --profile app down -v` |
+| **Đặt lại (reset) dữ liệu demo học tập** | `docker exec -i lusia-postgres psql -U lusia -d lusia_db -c "DELETE FROM learning_sessions; DELETE FROM quizzes;" -c "UPDATE chunks SET review='pending', reviewed_by=NULL, reviewed_at=NULL WHERE kind='figure';" -c "UPDATE documents SET published_at=NULL, published_by=NULL;"` |
+
+---
+
+#### 🛠️ Lựa chọn 2: Phát triển cục bộ kết hợp (Docker Dịch vụ nền + Local Python venv)
+
+Phương thức này dành cho các nhà phát triển muốn can thiệp sâu vào backend Python, chạy test với pytest hoặc tối ưu hiệu năng OCR trên macOS:
+
+> 🍎 **Lợi thế trên macOS:** Chạy local venv cho phép kích hoạt `local_ocr` sử dụng native Apple Vision framework (`pyobjc-framework-Vision`). Nhờ đó, việc nhận diện chữ trên sách scan được thực hiện trực tiếp trên chip Apple Silicon cực nhanh, tiết kiệm hơn 7 lần token LLM so với việc gửi ảnh lên cloud.
+
+#### 1. Khởi chạy Dịch vụ nền (Postgres + pgvector & Redis)
+
+Chỉ bật 2 dịch vụ nền mà không bật profile `app`:
+
+```bash
+docker compose up -d          # Khởi chạy lusia-postgres (5432) và lusia-redis (6379)
+```
+
+*(Tùy chọn: Nếu dùng Neon Cloud Database, chạy `cd backend && neon link && cd ..` để ghi URL Neon vào `.env`)*.
+
+#### 2. Cài đặt môi trường Python & Khởi chạy Backend
 
 ```bash
 cd backend
 python3 -m venv .venv
-source .venv/bin/activate      # Windows: .venv\Scripts\activate
+source .venv/bin/activate      # Trên Windows: .venv\Scripts\activate
 pip install -r requirements.txt -r requirements-dev.txt
-python -m app.migrate          # tạo / cập nhật schema (xem "Migration" bên dưới)
-python -m app.seed             # dữ liệu demo (xem "Danh tính dev" bên dưới)
+
+# Cập nhật schema database và nạp dữ liệu demo:
+python -m app.migrate          # Áp dụng các migration SQL
+python -m app.seed             # Tạo tài khoản colan, minh8a, hana8a
+
+# Tải model AI cục bộ:
+python -m app.voice.tts --download
+python -c "from huggingface_hub import hf_hub_download as d; d('juliozhao/DocLayout-YOLO-DocStructBench', 'doclayout_yolo_docstructbench_imgsz1024.pt', local_dir='data/models/doclayout')"
+
+# Nạp sách giáo khoa (CLI):
+python -m app.ingest ~/Downloads/toan8.pdf --title "Toán 8 tập 2" --subject toan --grade 8
+# Sách nạp trước khi có dàn ý giảng: rút dàn ý (một lượt LLM / bài)
+python -m app.outline <document_id>
+
+# Khởi chạy Background Worker (chạy nền):
+arq app.worker.WorkerSettings &
+
+# Khởi chạy FastAPI Server:
 uvicorn app.main:app --reload --port 8000
 ```
 
-Mở <http://localhost:8000/docs> để xem và thử API (Swagger UI). Kiểm tra nhanh: `curl localhost:8000/health/ready` và `curl localhost:8000/me`.
-
-#### Migration (schema database)
-
+#### 3. Migration & Quản lý Schema Database
 Schema nằm trong `backend/migrations/` (`000_init.sql`, `001_...sql`, …). `python -m app.migrate` chạy các file **chưa chạy** theo thứ tự tên và ghi lại vào bảng `schema_migrations`; chạy lại nhiều lần không sao. Lệnh luôn dùng `DATABASE_URL_UNPOOLED` (URL **không qua pooler**).
 
 | Tình huống | Lệnh |
@@ -450,63 +613,30 @@ Schema nằm trong `backend/migrations/` (`000_init.sql`, `001_...sql`, …). `p
 | Database đã tạo từ `schema.sql` cũ (volume Docker cũ, Neon project VJAH) — chạy **một lần** | `python -m app.migrate --baseline 000_init` rồi `python -m app.migrate` |
 | Thay đổi schema | thêm file mới `backend/migrations/00N_mo_ta.sql`, **không sửa** file đã chạy |
 
-**Neon:** luôn thử trên một branch trước — tạo branch, trỏ `DATABASE_URL_UNPOOLED` vào branch, chạy baseline/migrate, kiểm tra app; sau đó mới chạy trên branch chính.
+**Kiểm tra ràng buộc schema bằng kiểm thử tự động:**  
+`pytest tests/test_schema_sql.py` (chạy trên database test riêng `lusia_test`, không ảnh hưởng tới database chính).
 
-**Kiểm tra ràng buộc schema:** `pytest tests/test_schema_sql.py` (chạy `tests/sql/schema_test.sql` trên database test riêng `lusia_test`, không đụng tới database trong `.env`).
+#### 4. Danh tính phát triển (Dev Identity - `AUTH_MODE=dev`)
 
-#### Dữ liệu demo & danh tính dev (chưa có đăng nhập)
+Backend hiện chạy ở chế độ `AUTH_MODE=dev` (chế độ này tự động bị chặn nếu `APP_ENV=production`):
+- Mặc định: Request học sinh dùng `DEV_STUDENT_USERNAME=minh8a`, giáo viên dùng `DEV_TEACHER_USERNAME=colan`.
+- Chọn người dùng qua header HTTP: `X-Dev-User: <username>`.
+- Tra cứu danh tính hiện tại:
+  ```bash
+  curl -s localhost:8000/me                            # minh8a (học sinh, tiếng Việt)
+  curl -s -H "X-Dev-User: hana8a" localhost:8000/me    # hana8a (học sinh, tiếng Nhật)
+  curl -s -H "X-Dev-User: colan"  localhost:8000/me    # colan (giáo viên)
+  ```
 
-Tới **giai đoạn 12** (change `authentication`) LUSIA **chưa có đăng nhập**: backend chạy ở `AUTH_MODE=dev` và coi mỗi request là của một người dùng demo. Chế độ này **bị từ chối khi `APP_ENV=production`**.
-
-```bash
-python -m app.seed      # tạo (chạy lại nhiều lần không sao): giáo viên colan, lớp 8A, học sinh minh8a (vi), hana8a (ja)
-```
-
-- Không có header → endpoint cần học sinh dùng `DEV_STUDENT_USERNAME` (mặc định `minh8a`), endpoint cần giáo viên dùng `DEV_TEACHER_USERNAME` (mặc định `colan`).
-- Header `X-Dev-User: <username>` chọn người dùng khác. Username sai → 400; chưa seed → 503.
-- `GET /me` trả về người dùng hiện tại (response giữ nguyên khi có đăng nhập).
-
-```bash
-curl -s localhost:8000/me                            # minh8a, language vi
-curl -s -H "X-Dev-User: hana8a" localhost:8000/me    # hana8a, language ja
-curl -s -H "X-Dev-User: colan"  localhost:8000/me    # role teacher
-```
-
-Quy ước để thêm đăng nhập sau này **không phải viết lại** service:
-- Chỉ `app/identity.py` được biết về danh tính dev (có test kiểm tra). Endpoint lấy người dùng qua `current_student` / `current_teacher` / `current_user` rồi truyền **id tường minh** xuống service, agent, job.
-- Cột chủ sở hữu (`learning_sessions.student_id`, `documents.uploaded_by`, `chunks.reviewed_by`…) luôn lấy từ người dùng hiện tại, không bao giờ từ body request.
-- Chỗ nào sau này cần kiểm tra quyền thì ghi chú `# authz-later: <điều kiện>` (vd. `# authz-later: teacher must own class`) — giai đoạn 12 sẽ `grep -rn "authz-later"` để xử lý hết.
-
-#### Nạp tài liệu học tập (SGK, phiếu học tập)
-
-PDF được đọc → chia **bài học** → cắt **đoạn văn** (chunk) → tìm **hình** và mô tả bằng lời cho học sinh khiếm thị → tạo embedding → lưu vào `chunks`. Trang không có lớp chữ (bản scan, lỗi font TCVN3/VNI) được LLM đọc thay. Mô tả hình ở trạng thái **chờ giáo viên duyệt** (`review = pending`).
+#### 5. Chạy kiểm thử (Automated Tests)
 
 ```bash
-# SGK chính thức (không cần danh tính, chạy ngay trong lệnh, không cần worker). KHÔNG commit PDF SGK (bản quyền).
-python -m app.ingest ~/Downloads/toan8-tap2.pdf --title "Toán 8 tập 2" --subject toan --grade 8
-
-# Học sinh / giáo viên tải lên (xử lý nền → cần worker đang chạy)
-curl -s -H "X-Dev-User: minh8a" -F "file=@phieu.pdf" -F title="Phiếu học tập" -F subject=toan -F grade=8 \
-     localhost:8000/documents                                   # → 202 {"id": ..., "status": "processing"}
-curl -s localhost:8000/documents/<id>                         # status, page_count, processed_pages, error, số chunk/hình
-curl -s localhost:8000/documents/<id>/lessons                 # danh sách bài học
-curl -s localhost:8000/figures/<chunk_id>/image -o hinh.png   # ảnh của một hình
+pytest      # Tự động dùng database test lusia_test và AI provider giả lập (fake), không tốn token/chi phí
 ```
 
-- **Trạng thái:** `processing` → `ready` hoặc `failed` (kèm `error` dạng `"<bước>: <lỗi>"`). Lỗi tạm thời (LLM) được thử lại 3 lần; PDF hỏng thì báo lỗi ngay.
-- **Sửa bài học** (giáo viên): `PUT /documents/<id>/lessons` với danh sách `{id?, title, page_start, page_end}` → chunk được dựng lại. Không xóa được bài đã có kết quả quiz (409). `POST /documents/<id>/reprocess` để xử lý lại.
-- **File lưu ở** `FILES_DIR` (mặc định `backend/data/files`, trong Docker là volume `lusia_files_data`) cho tới khi có S3.
-- **Chi phí:** mỗi trang phải OCR và mỗi hình mô tả = 1 lần gọi LLM; lệnh `app.ingest` in tổng số trang OCR / hình / hình bị bỏ qua. Model embedding chạy local (~2,3 GB, tải lần đầu).
-- Giới hạn: `MAX_UPLOAD_MB` (50), `MAX_PAGES` (400); chỉnh ngưỡng cắt đoạn/hình trong `backend/.env` (xem `.env.example`).
+---
 
-#### Background worker & test
-
-```bash
-arq app.worker.WorkerSettings    # worker chạy job nền (cần Redis)
-pytest                           # dùng database riêng lusia_test (TEST_DATABASE_URL) + provider AI giả, không cần API key
-```
-
-### 5. Frontend (Next.js)
+### 4. Khởi chạy Frontend (Next.js)
 
 ```bash
 cd frontend
@@ -514,9 +644,20 @@ npm install
 npm run dev
 ```
 
-Mở <http://localhost:3000>. Backend mặc định ở `http://localhost:8000`; đổi bằng `NEXT_PUBLIC_API_URL` trong `frontend/.env.local` (giá trị được gắn cứng lúc `next build`).
+Mở trình duyệt **Google Chrome** (cần thiết cho nhận diện giọng nói tiếng Việt độ trễ thấp qua Web Speech API):
+- 🎓 **Giao diện Học sinh khiếm thị (Voice-first)**: <http://localhost:3000/learn>  
+  *(Nhấn phím bất kỳ để bắt đầu, giữ phím Space để nói chuyện với LUSIA)*.
+- 👩‍🏫 **Bảng điều khiển Giáo viên (Teacher Dashboard)**: <http://localhost:3000/dashboard>
+- 📚 **Kiểm duyệt học liệu & Xuất bản SGK**: <http://localhost:3000/curation>
+- 📊 **Giám sát Agent, Độ trễ & Token LLM**: <http://localhost:3000/monitor>
+- 📖 **Tài liệu API Swagger**: <http://localhost:8000/docs>
 
-Khi API backend thay đổi: chạy backend rồi `npm run gen:api` để sinh lại kiểu TypeScript (`src/lib/api-types.ts`, có commit vào repo).
+> 💡 **Cấu hình kết nối API:** Mặc định frontend kết nối tới backend tại `http://localhost:8000`. Nếu đổi cổng backend, hãy tạo file `frontend/.env.local` với nội dung `NEXT_PUBLIC_API_URL=http://localhost:<cổng_mới>` và thêm origin tương ứng vào `FRONTEND_ORIGINS` trong `backend/.env`.
+
+Khi API backend có thay đổi về endpoint hoặc kiểu dữ liệu:
+```bash
+npm run gen:api    # Tự động tạo lại TypeScript types tại src/lib/api-types.ts
+```
 
 ---
 

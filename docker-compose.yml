@@ -94,6 +94,7 @@ services:
     volumes:
       - ./backend/app:/app/app
       - ./backend/migrations:/app/migrations
+      - ./backend/data/models:/app/data/models
       - hf_cache:/root/.cache/huggingface  # model embedding, tải 1 lần dùng chung api/worker
       - files_data:/data/files
     depends_on:
@@ -114,6 +115,7 @@ services:
         required: false
     volumes:
       - ./backend/app:/app/app
+      - ./backend/data/models:/app/data/models
       - hf_cache:/root/.cache/huggingface
       - files_data:/data/files
     depends_on:

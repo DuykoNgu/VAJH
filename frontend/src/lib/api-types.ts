@@ -176,6 +176,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tts/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stream Speech
+         * @description Tổng hợp lần lượt đúng thứ tự, gửi audio ngay khi có; trình duyệt ngắt kết nối thì dừng tổng hợp.
+         */
+        post: operations["stream_speech_tts_stream_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sessions": {
         parameters: {
             query?: never;
@@ -288,7 +308,11 @@ export interface paths {
         /** List Documents */
         get: operations["list_documents_curation_documents_get"];
         put?: never;
-        post?: never;
+        /**
+         * Upload As Teacher
+         * @description Trang kiểm duyệt tải sách lên bằng tài khoản GIÁO VIÊN (học sinh khác thấy sau khi xuất bản).
+         */
+        post: operations["upload_as_teacher_curation_documents_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -312,6 +336,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/curation/lessons/{lesson_id}/outline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Regenerate Outline
+         * @description Rút lại dàn ý từ nguồn tri thức hiện tại (một lượt LLM); lỗi thì giữ dàn ý cũ.
+         */
+        post: operations["regenerate_outline_curation_lessons__lesson_id__outline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/curation/documents/{doc_id}/outline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Outline Whole Document
+         * @description Dàn ý cho mọi bài (song song), theo thứ tự bài.
+         */
+        post: operations["outline_whole_document_curation_documents__doc_id__outline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/curation/lessons/{lesson_id}/outline/{position}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Point */
+        delete: operations["delete_point_curation_lessons__lesson_id__outline__position__delete"];
+        options?: never;
+        head?: never;
+        /** Edit Point */
+        patch: operations["edit_point_curation_lessons__lesson_id__outline__position__patch"];
+        trace?: never;
+    };
     "/curation/chunks/{chunk_id}": {
         parameters: {
             query?: never;
@@ -328,6 +410,26 @@ export interface paths {
         head?: never;
         /** Edit Chunk */
         patch: operations["edit_chunk_curation_chunks__chunk_id__patch"];
+        trace?: never;
+    };
+    "/curation/documents/{doc_id}/figures/approve-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve All Figures
+         * @description Duyệt một lần mọi hình đang chờ của tài liệu (giáo viên đã xem lướt); hình đã từ chối giữ nguyên.
+         */
+        post: operations["approve_all_figures_curation_documents__doc_id__figures_approve_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/curation/documents/{doc_id}/publish": {
@@ -496,6 +598,25 @@ export interface components {
             /** P95 Ms */
             p95_ms: number;
         };
+        /** Approved */
+        Approved: {
+            /** Approved */
+            approved: number;
+        };
+        /** Body_upload_as_teacher_curation_documents_post */
+        Body_upload_as_teacher_curation_documents_post: {
+            /** File */
+            file: string;
+            /** Title */
+            title: string;
+            /**
+             * Subject
+             * @enum {string}
+             */
+            subject: "toan" | "ngu_van" | "tieng_viet" | "tieng_anh" | "khtn" | "vat_ly" | "hoa_hoc" | "sinh_hoc" | "lich_su" | "dia_ly" | "lich_su_dia_ly" | "tin_hoc" | "khac";
+            /** Grade */
+            grade: number;
+        };
         /** Body_upload_document_documents_post */
         Body_upload_document_documents_post: {
             /** File */
@@ -573,6 +694,8 @@ export interface components {
             page_count: number | null;
             /** Published */
             published: boolean;
+            /** Progress */
+            progress?: string | null;
             /** Lessons */
             lessons: number;
             /** Text Chunks */
@@ -602,6 +725,10 @@ export interface components {
             page_start: number;
             /** Page End */
             page_end: number;
+            /** Outline */
+            outline: components["schemas"]["OutlineItem"][];
+            /** Teaching */
+            teaching: components["schemas"]["TeachingItem"][];
             /** Parts */
             parts: components["schemas"]["CurationPart"][];
         };
@@ -791,6 +918,13 @@ export interface components {
             /** Weak In */
             weak_in: ("concept" | "figure")[];
         };
+        /** LessonOutlined */
+        LessonOutlined: {
+            /** Title */
+            title: string;
+            /** Points */
+            points: number;
+        };
         /** Me */
         Me: {
             /** Mode */
@@ -815,6 +949,32 @@ export interface components {
             language: ("vi" | "ja") | null;
             /** Speech Rate */
             speech_rate: number | null;
+        };
+        /** OutlineItem */
+        OutlineItem: {
+            /** Position */
+            position: number;
+            /** Title */
+            title: string;
+            /** Content */
+            content: string;
+            /** Question */
+            question: string | null;
+            /** Answer */
+            answer: string | null;
+            /** Pages */
+            pages: number[];
+        };
+        /** PointEdit */
+        PointEdit: {
+            /** Title */
+            title: string;
+            /** Content */
+            content: string;
+            /** Question */
+            question?: string | null;
+            /** Answer */
+            answer?: string | null;
         };
         /** Preview */
         Preview: {
@@ -958,6 +1118,11 @@ export interface components {
             /** Lesson Id */
             lesson_id?: string | null;
         };
+        /** StreamRequest */
+        StreamRequest: {
+            /** Sentences */
+            sentences: string[];
+        };
         /** StudentOverview */
         StudentOverview: {
             /**
@@ -985,6 +1150,21 @@ export interface components {
             quality: components["schemas"]["Quality"];
             /** Estimated Cost Usd */
             estimated_cost_usd: number | null;
+        };
+        /**
+         * TeachingItem
+         * @description Đúng những gì LUSIA sẽ giảng, theo thứ tự (dàn ý, hoặc đoạn SGK đã lọc nhiễu khi chưa có dàn ý).
+         */
+        TeachingItem: {
+            /** Number */
+            number: number;
+            /** Label */
+            label: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "text" | "figure";
         };
         /** TraceDetail */
         TraceDetail: {
@@ -1464,6 +1644,39 @@ export interface operations {
             };
         };
     };
+    stream_speech_tts_stream_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     start_session_sessions_post: {
         parameters: {
             query?: never;
@@ -1667,6 +1880,39 @@ export interface operations {
             };
         };
     };
+    upload_as_teacher_curation_documents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_as_teacher_curation_documents_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Accepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_document_curation_documents__doc_id__get: {
         parameters: {
             query?: never;
@@ -1685,6 +1931,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CurationDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    regenerate_outline_curation_lessons__lesson_id__outline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lesson_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutlineItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    outline_whole_document_curation_documents__doc_id__outline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonOutlined"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_point_curation_lessons__lesson_id__outline__position__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lesson_id: string;
+                position: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_point_curation_lessons__lesson_id__outline__position__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lesson_id: string;
+                position: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PointEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutlineItem"][];
                 };
             };
             /** @description Validation Error */
@@ -1748,6 +2122,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_all_figures_curation_documents__doc_id__figures_approve_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                doc_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Approved"];
+                };
             };
             /** @description Validation Error */
             422: {

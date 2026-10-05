@@ -18,7 +18,6 @@ type Status = "idle" | "listening" | "thinking" | "speaking";
 type Entry = { role: "student" | "lusia"; text: string; reply?: TurnReply };
 type MenuLesson = Lesson & { documentTitle: string };
 
-const FILLER = "Để mình xem sách nhé.";
 const STARTING = "Mình bắt đầu bài nhé.";
 const HELP =
   "Em giữ phím cách để nói với LUSIA. Nói tiếp để học phần sau. Nói kiểm tra mình để làm bài. Nói nhắc lại để nghe lại. " +
@@ -171,7 +170,7 @@ export default function LearnApp() {
     busy.current = true;
     setEntries((e) => [...e, { role: "student", text }]);
     setStatus("thinking");
-    speak([FILLER], false); // phát ngay để che thời gian các agent xử lý
+    player.current?.stop(); // xử lý im lặng (người dùng thấy câu chờ lặp lại mỗi lượt gây mệt)
     try {
       const reply = await api<TurnReply>(`/sessions/${sessionId}/turns`, {
         method: "POST",
