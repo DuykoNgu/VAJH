@@ -7,7 +7,7 @@ import sys
 import psycopg
 
 from app.config import get_settings
-from app.identity import DEV_USER_HEADER, NO_CREDENTIAL
+from app.core.identity import DEV_USER_HEADER, NO_CREDENTIAL
 
 TEACHER = ("colan", "Cô Lan")
 CLASS_NAME = "8A"

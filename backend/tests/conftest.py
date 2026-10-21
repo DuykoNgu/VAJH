@@ -86,7 +86,7 @@ async def client(test_database):
 
 
 # ---------- Danh tính test (TEST_USER): mỗi test tự tạo người dùng, không phụ thuộc seed ----------
-from app.identity import DEV_USER_HEADER, NO_CREDENTIAL, UserContext, current_student, current_teacher, current_user  # noqa: E402,I001
+from app.core.identity import DEV_USER_HEADER, NO_CREDENTIAL, UserContext, current_student, current_teacher, current_user  # noqa: E402,I001
 
 
 @pytest.fixture
@@ -129,7 +129,7 @@ GRAPH_DESCRIPTION = "Đồ thị hàm số y bằng hai x cộng một là đư�
 def textbook(db):
     import uuid as _uuid
 
-    from app.ai.fakes import fake_vector
+    from app.core.ai.fakes import fake_vector
 
     doc = _uuid.uuid4()
     db.execute("INSERT INTO documents (id, kind, title, subject, grade, storage_key, status, published_at) VALUES"

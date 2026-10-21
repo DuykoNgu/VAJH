@@ -17,8 +17,8 @@ from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # chạy được bằng `python spikes/<file>.py`
 
-from app.ai.llm import LLMResult, Refusal, make_llm
 from app.config import get_settings
+from app.core.ai.llm import LLMResult, Refusal, make_llm
 
 ROUTER_SYSTEM = (
     "Bạn là bộ điều phối của LUSIA, gia sư AI cho học sinh khiếm thị. Đọc câu hỏi và chọn ý định cùng các agent "

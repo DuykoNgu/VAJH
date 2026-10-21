@@ -18,15 +18,6 @@ export function getDevUser(): string | null {
   }
 }
 
-export function setDevUser(username: string | null): void {
-  try {
-    if (username) localStorage.setItem(DEV_USER_KEY, username);
-    else localStorage.removeItem(DEV_USER_KEY);
-  } catch {
-    // không lưu được thì dùng người dùng mặc định của backend
-  }
-}
-
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -48,5 +39,3 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!res.ok) throw new ApiError(res.status, body);
   return body as T;
 }
-
-export const getMe = () => api<Me>("/me");

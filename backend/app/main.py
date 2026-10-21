@@ -4,16 +4,23 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import jobs
-from app.ai.embeddings import make_embeddings, warm_up
-from app.ai.llm import make_llm
-from app.ai.speech import make_tts
-from app.api import chat, curation, documents, health, me, monitor, teacher, tts
 from app.config import Settings, get_settings
-from app.identity import DEV_USER_HEADER, make_identity_provider
-from app.learning import build_agents
-from app.storage import cache, relational
-from app.storage.files import make_file_store
+from app.core import jobs
+from app.core.ai.llm import make_llm
+from app.core.ai.speech import make_tts
+from app.core.identity import DEV_USER_HEADER, make_identity_provider
+from app.core.rag.embeddings import make_embeddings, warm_up
+from app.core.storage import cache, relational
+from app.core.storage.files import make_file_store
+from app.features.curation import router as curation
+from app.features.documents import router as documents
+from app.features.health import router as health
+from app.features.learning import router as learning
+from app.features.learning.service import build_agents
+from app.features.me import router as me
+from app.features.monitor import router as monitor
+from app.features.teacher import router as teacher
+from app.features.voice import router as voice
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -53,8 +60,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(me.router)
     app.include_router(documents.router)
-    app.include_router(tts.router)
-    app.include_router(chat.router)
+    app.include_router(voice.router)
+    app.include_router(learning.router)
     app.include_router(teacher.router)
     app.include_router(curation.router)
     app.include_router(monitor.router)

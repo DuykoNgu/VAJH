@@ -10,10 +10,15 @@ from uuid import UUID
 from arq import Retry, cron, func
 from arq.connections import RedisSettings
 
-from app import tracing
 from app.config import get_settings
-from app.ingestion.pipeline import Deps, IngestionError, mark_failed, process_document
-from app.storage import relational
+from app.core import tracing
+from app.core.storage import relational
+from app.features.documents.ingestion.pipeline import (
+    Deps,
+    IngestionError,
+    mark_failed,
+    process_document,
+)
 
 log = logging.getLogger("lusia.worker")
 

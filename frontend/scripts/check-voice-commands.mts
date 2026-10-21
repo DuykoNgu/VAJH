@@ -1,4 +1,4 @@
-import { matchCommand, matchLesson } from "../src/lib/voice-commands.ts";
+import { matchCommand, matchLesson } from "../src/app/learn/voice-commands.ts";
 const titles = ["Bài 1. Hàm số bậc nhất", "Bài 2. Đồ thị của hàm số bậc nhất"];
 const cases: [string, unknown, unknown][] = [
   ["matchLesson('bài hai')", matchLesson("bài hai", titles), 1],

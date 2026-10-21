@@ -1,4 +1,4 @@
-from app.identity import NO_CREDENTIAL
+from app.core.identity import NO_CREDENTIAL
 from app.seed import seed
 
 

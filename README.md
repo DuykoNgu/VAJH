@@ -241,12 +241,12 @@ docker compose --profile app up -d --build
 docker compose --profile app exec api python -m app.seed
 
 # 3. Tải model giọng đọc ZeroTTS (~900 MB) và model bố cục DocLayout-YOLO (~40 MB) (chỉ cần chạy một lần)
-docker compose --profile app exec api python -m app.voice.tts --download
+docker compose --profile app exec api python -m app.features.voice.tts --download
 docker compose --profile app exec api python -c "from huggingface_hub import hf_hub_download as d; d('juliozhao/DocLayout-YOLO-DocStructBench', 'doclayout_yolo_docstructbench_imgsz1024.pt', local_dir='data/models/doclayout')"
 
 # 4. Nạp SGK: Tải trực tiếp qua Web UI tại http://localhost:3000/curation hoặc dùng CLI với file mẫu:
 docker cp "SGK Toán 8, tập một-mau.pdf" $(docker compose ps -q api):/app/data/files/toan8.pdf
-docker compose --profile app exec api python -m app.ingest /app/data/files/toan8.pdf --title "Toán 8 tập 1" --subject toan --grade 8
+docker compose --profile app exec api python -m app.features.documents.ingest /app/data/files/toan8.pdf --title "Toán 8 tập 1" --subject toan --grade 8
 
 # 5. Khởi chạy giao diện Frontend
 cd frontend && npm install && npm run dev              # Mở http://localhost:3000/learn
@@ -258,10 +258,10 @@ cd frontend && npm install && npm run dev              # Mở http://localhost:3
 docker compose up -d                                   # Chỉ bật Postgres + Redis
 cd backend && source .venv/bin/activate
 python -m app.migrate && python -m app.seed            # Schema + tài khoản demo
-python -m app.voice.tts --download                     # Model giọng đọc ZeroTTS (~900 MB, một lần)
+python -m app.features.voice.tts --download            # Model giọng đọc ZeroTTS (~900 MB, một lần)
 python -c "from huggingface_hub import hf_hub_download as d; d('juliozhao/DocLayout-YOLO-DocStructBench', 'doclayout_yolo_docstructbench_imgsz1024.pt', local_dir='data/models/doclayout')"  # Model bố cục tìm hình (~40 MB)
-python -m app.ingest ~/Downloads/toan8.pdf --title "Toán 8 tập 2" --subject toan --grade 8
-python -m app.outline <document_id>                    # Sách nạp trước khi có dàn ý: rút dàn ý giảng (~6 s / bài)
+python -m app.features.documents.ingest ~/Downloads/toan8.pdf --title "Toán 8 tập 2" --subject toan --grade 8
+python -m app.features.documents.outline <document_id>  # Sách nạp trước khi có dàn ý: rút dàn ý giảng (~6 s / bài)
 arq app.worker.WorkerSettings &                        # Worker xử lý PDF nền
 uvicorn app.main:app --port 8000                       # Đợi nạp model giọng đọc & embedding
 cd ../frontend && npm run dev                          # Mở http://localhost:3000/learn
@@ -327,16 +327,25 @@ Hackathon_VJAI/
 │       └── dashboard/         # Teacher Dashboard
 ├── backend/                   # Python FastAPI
 │   ├── app/
-│   │   ├── main.py            # API / Application Layer: khởi tạo app, CORS, router
-│   │   ├── api/               # Endpoint: chat.py (học sinh), teacher.py (giáo viên)
-│   │   ├── voice/             # Accessibility Layer: stt.py, tts.py
-│   │   ├── agents/            # AI Agent Core: orchestrator, tutor, knowledge,
-│   │   │                      #   vision, document, assessment, student_model
-│   │   ├── tools.py           # Tool Layer: search_knowledge(), generate_quiz(), …
-│   │   └── storage/           # Data Layer: vector (pgvector), relational (PostgreSQL),
-│   │       │                  #   cache (Redis), files (MinIO / S3)
+│   │   ├── main.py            # Khởi tạo FastAPI, CORS, gắn router của từng feature
+│   │   ├── worker.py          # Worker arq (xử lý PDF nền)
+│   │   ├── migrate.py, seed.py
+│   │   ├── config/            # Cấu hình theo feature: core, ai, rag, documents, learning, voice, monitor
+│   │   ├── prompts/           # Toàn bộ prompt LLM: common (phong cách nói), learning (agent), documents (nạp sách)
+│   │   ├── core/              # Dùng chung: identity, jobs, tracing
+│   │   │   ├── ai/            #   llm, speech (+ fakes cho test)
+│   │   │   ├── rag/           #   chunking → embeddings → indexing (ghi chunks) → retrieval (tìm theo câu hỏi)
+│   │   │   └── storage/       #   relational (PostgreSQL + pgvector), cache (Redis), files
+│   │   └── features/          # Mỗi feature: router.py (endpoint) + logic riêng
+│   │       ├── documents/     #   Tải SGK, ingestion/ (PDF → bài, đoạn, hình), outline, tools
+│   │       ├── curation/      #   Kiểm duyệt nội dung, xuất bản
+│   │       ├── learning/      #   Học sinh: service, teaching, hooks, agents/
+│   │       ├── voice/         #   TTS (ZeroTTS), chuẩn hoá văn bản đọc, mp3
+│   │       ├── teacher/       #   Teacher Dashboard
+│   │       ├── monitor/       #   Trace agent + LLM
+│   │       └── me/, health/
 │   ├── migrations/            # Schema database: 000_init.sql, 001_…sql (python -m app.migrate)
-│   ├── tests/                 # pytest (+ sql/schema_test.sql kiểm tra ràng buộc)
+│   ├── tests/                 # pytest, cùng cấu trúc core/ + features/ (+ sql/schema_test.sql)
 │   ├── requirements.txt
 │   └── .env.example
 ├── docker-compose.yml         # Cấu hình Docker: Dịch vụ nền (Postgres, Redis) & Profile "app" (Migrate, API, Worker)
@@ -519,7 +528,7 @@ Hệ thống sử dụng model TTS tiếng Việt tự nhiên và model thị gi
 
 ```bash
 # 1. Tải model giọng đọc tiếng Việt ZeroTTS (~900 MB, chỉ cần tải một lần):
-docker compose --profile app exec api python -m app.voice.tts --download
+docker compose --profile app exec api python -m app.features.voice.tts --download
 
 # 2. Tải model nhận diện cấu trúc & hình vẽ DocLayout-YOLO (~40 MB, chỉ cần tải một lần):
 docker compose --profile app exec api python -c "from huggingface_hub import hf_hub_download as d; d('juliozhao/DocLayout-YOLO-DocStructBench', 'doclayout_yolo_docstructbench_imgsz1024.pt', local_dir='data/models/doclayout')"
@@ -540,7 +549,7 @@ Bạn có thể nạp tài liệu vào hệ thống theo một trong hai cách:
   docker cp "SGK Toán 8, tập một-mau.pdf" $(docker compose ps -q api):/app/data/files/toan8.pdf
 
   # Chạy lệnh nạp tài liệu trực tiếp bên trong container:
-  docker compose --profile app exec api python -m app.ingest /app/data/files/toan8.pdf --title "Toán 8 tập 1" --subject toan --grade 8
+  docker compose --profile app exec api python -m app.features.documents.ingest /app/data/files/toan8.pdf --title "Toán 8 tập 1" --subject toan --grade 8
   ```
 
 ##### 📋 Bảng tra cứu lệnh Docker thường dùng
@@ -589,13 +598,13 @@ python -m app.migrate          # Áp dụng các migration SQL
 python -m app.seed             # Tạo tài khoản colan, minh8a, hana8a
 
 # Tải model AI cục bộ:
-python -m app.voice.tts --download
+python -m app.features.voice.tts --download
 python -c "from huggingface_hub import hf_hub_download as d; d('juliozhao/DocLayout-YOLO-DocStructBench', 'doclayout_yolo_docstructbench_imgsz1024.pt', local_dir='data/models/doclayout')"
 
 # Nạp sách giáo khoa (CLI):
-python -m app.ingest ~/Downloads/toan8.pdf --title "Toán 8 tập 2" --subject toan --grade 8
+python -m app.features.documents.ingest ~/Downloads/toan8.pdf --title "Toán 8 tập 2" --subject toan --grade 8
 # Sách nạp trước khi có dàn ý giảng: rút dàn ý (một lượt LLM / bài)
-python -m app.outline <document_id>
+python -m app.features.documents.outline <document_id>
 
 # Khởi chạy Background Worker (chạy nền):
 arq app.worker.WorkerSettings &

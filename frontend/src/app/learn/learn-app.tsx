@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { api, type Me } from "@/lib/api";
 import type { components } from "@/lib/api-types";
 import { createPlayer, listen, recognitionSupported } from "@/lib/speech";
-import { type Command, matchCommand, matchLesson } from "@/lib/voice-commands";
+import { type Command, matchCommand, matchLesson } from "./voice-commands";
 
 type DocumentSummary = components["schemas"]["DocumentSummary"];
 type Lesson = components["schemas"]["Lesson"];
