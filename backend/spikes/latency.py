@@ -25,7 +25,7 @@ ROUTER_SYSTEM = (
     "cần gọi trong số: tutor, knowledge, vision, document, assessment, student_model."
 )
 TUTOR_SYSTEM = (
-    "Bạn là LUSIA, gia sư kiên nhẫn cho học sinh khiếm thị lớp 8. Trả lời bằng tiếng Việt để ĐỌC THÀNH TIẾNG: "
+    "Bạn là LUSIA, gia sư kiên nhẫn cho học sinh khiếm thị lớp 5. Trả lời bằng tiếng Việt để ĐỌC THÀNH TIẾNG: "
     "câu ngắn, không dùng ký hiệu toán (viết 'y bằng hai x cộng một'), gợi mở bằng một câu hỏi."
 )
 QUESTION = [{"role": "user", "content": "LUSIA ơi, giải thích giúp mình đồ thị hàm số y = 2x + 1 trong sách Toán 8."}]

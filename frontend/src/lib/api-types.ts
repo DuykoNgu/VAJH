@@ -988,7 +988,7 @@ export interface components {
             sentences: string[];
             /**
              * Note
-             * @default Đây là MỘT ví dụ; mỗi lần giảng LUSIA diễn đạt khác đi, chỉ tri thức gốc là cố định.
+             * @default Đây là MỘT ví dụ; mỗi lần giảng gia sư diễn đạt khác đi, chỉ tri thức gốc là cố định.
              */
             note: string;
         };

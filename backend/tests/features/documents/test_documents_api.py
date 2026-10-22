@@ -27,7 +27,7 @@ def deps_for(client, *replies):
     return Deps(settings, FakeLLM(settings).script(*replies), FakeEmbeddings(), LocalFileStore(settings.files_dir))
 
 
-async def upload(client, data: bytes, user="minh8a", **extra):
+async def upload(client, data: bytes, user="minh5a", **extra):
     return await client.post("/documents", headers=as_user(user), data={**FORM, **extra},
                              files={"file": ("bai.pdf", data, "application/pdf")})
 
@@ -44,14 +44,14 @@ async def queued(client):
     (pdfs.encrypted_pdf(), 422, "encrypted"),
 ])
 async def test_upload_rejects_bad_files(api, make_student, db, data, status, message):
-    make_student("minh8a")
+    make_student("minh5a")
     r = await upload(api, data)
     assert r.status_code == status and message in r.json()["detail"]
     assert db.execute("SELECT count(*) FROM documents").fetchone()[0] == 0
 
 
 async def test_upload_too_large_and_too_many_pages(tmp_path, test_database, make_student, db):
-    make_student("minh8a")
+    make_student("minh5a")
     async with running_app(files_dir=tmp_path, max_upload_mb=1, max_pages=4) as client:
         big = pdfs.plain_pdf(1) + b"%" * (1024 * 1024)
         assert (await upload(client, big)).status_code == 413
@@ -61,7 +61,7 @@ async def test_upload_too_large_and_too_many_pages(tmp_path, test_database, make
 
 
 async def test_student_uploads_a_handout(api, make_student, make_teacher, db):
-    student = make_student("minh8a")
+    student = make_student("minh5a")
     teacher = make_teacher("colan")
     r = await upload(api, pdfs.plain_pdf(3), uploaded_by=str(teacher))  # body không đổi được người tải lên
     assert r.status_code == 202 and r.json()["status"] == "processing"
@@ -74,7 +74,7 @@ async def test_student_uploads_a_handout(api, make_student, make_teacher, db):
 
 # ---------- read ----------
 
-async def ready_document(client, data=None, user="minh8a", replies=(GRAPH,)):
+async def ready_document(client, data=None, user="minh5a", replies=(GRAPH,)):
     r = await upload(client, data or pdfs.lessons_pdf(), user)
     doc_id = UUID(r.json()["id"])
     await process_document(doc_id, deps_for(client, *replies))
@@ -82,9 +82,9 @@ async def ready_document(client, data=None, user="minh8a", replies=(GRAPH,)):
 
 
 async def test_document_summary(api, make_student):
-    make_student("minh8a")
+    make_student("minh5a")
     doc_id = await ready_document(api)
-    r = await api.get(f"/documents/{doc_id}", headers=as_user("minh8a"))
+    r = await api.get(f"/documents/{doc_id}", headers=as_user("minh5a"))
     body = r.json()
     assert r.status_code == 200 and body["status"] == "ready" and body["page_count"] == 7
     assert (body["lessons"], body["figure_chunks"], body["pending_figures"], body["skipped_figures"]) == (2, 1, 1, 0)
@@ -92,7 +92,7 @@ async def test_document_summary(api, make_student):
 
 
 async def test_unknown_ids_are_404(api, make_student):
-    make_student("minh8a")
+    make_student("minh5a")
     missing = "00000000-0000-0000-0000-000000000000"
     for path in (f"/documents/{missing}", f"/documents/{missing}/file", f"/documents/{missing}/lessons",
                  "/figures/999999/image"):
@@ -100,22 +100,22 @@ async def test_unknown_ids_are_404(api, make_student):
 
 
 async def test_list_shows_textbooks_and_own_uploads_only(api, make_student, db):
-    make_student("minh8a")
-    make_student("hana8a", language="ja")
-    mine = (await upload(api, pdfs.plain_pdf(1), "minh8a")).json()["id"]
-    await upload(api, pdfs.plain_pdf(1), "hana8a")
+    make_student("minh5a")
+    make_student("hana5a", language="ja")
+    mine = (await upload(api, pdfs.plain_pdf(1), "minh5a")).json()["id"]
+    await upload(api, pdfs.plain_pdf(1), "hana5a")
     db.execute("INSERT INTO documents (kind, title, subject, grade, storage_key, status, published_at) VALUES"
                " ('textbook', 'SGK Toán 8', 'toan', 8, 'sgk/x.pdf', 'ready', now()),"
                " ('textbook', 'SGK Văn 9', 'ngu_van', 9, 'sgk/y.pdf', 'ready', now()),"
                " ('textbook', 'SGK nháp', 'toan', 8, 'sgk/z.pdf', 'ready', NULL)")  # bản nháp: học sinh không thấy
-    titles = {d["title"] for d in (await api.get("/documents", headers=as_user("minh8a"))).json()}
+    titles = {d["title"] for d in (await api.get("/documents", headers=as_user("minh5a"))).json()}
     assert titles == {"SGK Toán 8", "SGK Văn 9", "Phiếu học tập"}
-    toan8 = (await api.get("/documents?subject=toan&grade=8", headers=as_user("minh8a"))).json()
+    toan8 = (await api.get("/documents?subject=toan&grade=8", headers=as_user("minh5a"))).json()
     assert {d["title"] for d in toan8} == {"SGK Toán 8", "Phiếu học tập"} and mine in {d["id"] for d in toan8}
 
 
 async def test_download_file_lessons_and_figure_image(api, make_student, db):
-    make_student("minh8a")
+    make_student("minh5a")
     data = pdfs.lessons_pdf()
     doc_id = await ready_document(api, data)
     file = await api.get(f"/documents/{doc_id}/file")
@@ -132,7 +132,7 @@ async def test_download_file_lessons_and_figure_image(api, make_student, db):
 # ---------- lessons ----------
 
 async def test_fix_a_lesson_boundary(api, make_student, make_teacher, db):
-    make_student("minh8a")
+    make_student("minh5a")
     make_teacher("colan")
     doc_id = await ready_document(api)
     (l1, l2) = (await api.get(f"/documents/{doc_id}/lessons")).json()
@@ -150,7 +150,7 @@ async def test_fix_a_lesson_boundary(api, make_student, make_teacher, db):
 
 
 async def test_lesson_with_quiz_results_cannot_be_deleted(api, make_student, make_teacher, db):
-    student = make_student("minh8a")
+    student = make_student("minh5a")
     make_teacher("colan")
     doc_id = await ready_document(api)
     (l1, l2) = (await api.get(f"/documents/{doc_id}/lessons")).json()
@@ -169,14 +169,14 @@ async def test_lesson_with_quiz_results_cannot_be_deleted(api, make_student, mak
     [{"title": "A", "page_start": 6, "page_end": 3}],
 ])
 async def test_invalid_lesson_ranges(api, make_student, make_teacher, body):
-    make_student("minh8a")
+    make_student("minh5a")
     make_teacher("colan")
     doc_id = await ready_document(api)
     assert (await api.put(f"/documents/{doc_id}/lessons", json=body, headers=as_user("colan"))).status_code == 422
 
 
 async def test_reprocess_requeues(api, make_student, make_teacher, db):
-    make_student("minh8a")
+    make_student("minh5a")
     make_teacher("colan")
     doc_id = await ready_document(api)
     await (await jobs.queue()).flushdb()
@@ -186,7 +186,7 @@ async def test_reprocess_requeues(api, make_student, make_teacher, db):
 
 
 async def test_student_cannot_edit_lessons(api, make_student):
-    make_student("minh8a")
+    make_student("minh5a")
     doc_id = await ready_document(api)
-    r = await api.post(f"/documents/{doc_id}/reprocess", headers=as_user("minh8a"))
+    r = await api.post(f"/documents/{doc_id}/reprocess", headers=as_user("minh5a"))
     assert r.status_code == 400  # danh tính dev: endpoint cần giáo viên

@@ -219,10 +219,10 @@ flowchart LR
 
 ## 🎬 Kịch bản sử dụng (Demo Scenario)
 
-> 🎓 *"LUSIA ơi, giải thích giúp mình đồ thị trong bài Hàm số bậc nhất, sách Toán 8."*  
-> 🤖 **Knowledge Agent** tìm đúng bài trong SGK → **Vision Agent** mô tả: *"Đây là đồ thị hàm số y = 2x + 1: một đường thẳng đi lên từ trái sang phải, cắt trục tung tại điểm có tung độ bằng 1…"*  
-> 🎓 *"Vì sao nó cắt trục tung ở 1?"*  
-> 🤖 **Tutor Agent** gợi mở: *"Em thử thay x = 0 vào công thức xem y bằng bao nhiêu nhé?"*  
+> 🎓 *"LUSIA ơi, giải thích giúp mình hình trong bài Diện tích hình thang, sách Toán 5."*  
+> 🤖 **Knowledge Agent** tìm đúng bài trong SGK → **Vision Agent** mô tả: *"Đây là hình thang ABCD: đáy lớn CD nằm ngang ở dưới, đáy bé AB song song ở trên, đường cao AH đi thẳng từ A xuống CD…"*  
+> 🎓 *"Vì sao công thức phải chia cho 2?"*  
+> 🤖 **Tutor Agent** gợi mở: *"Em thử tưởng tượng ghép hai hình thang giống hệt nhau thành một hình bình hành xem nhé?"*  
 > 📝 Cuối buổi, **Assessment Agent** hỏi 3 câu trắc nghiệm bằng giọng nói; kết quả được ghi vào Student Model và hiển thị trên **Teacher Dashboard**.
 
 ---
@@ -237,7 +237,7 @@ Trên một laptop, dùng **Google Chrome** (nhận giọng nói tiếng Việt 
 # 1. Khởi chạy trọn bộ backend stack (Postgres + pgvector, Redis, Migrate, FastAPI, Arq Worker)
 docker compose --profile app up -d --build
 
-# 2. Khởi tạo tài khoản & lớp học mẫu (giáo viên colan, học sinh minh8a, hana8a)
+# 2. Khởi tạo tài khoản & lớp học mẫu (giáo viên colan, học sinh minh5a, hana5a)
 docker compose --profile app exec api python -m app.seed
 
 # 3. Tải model giọng đọc ZeroTTS (~900 MB) và model bố cục DocLayout-YOLO (~40 MB) (chỉ cần chạy một lần)
@@ -260,7 +260,7 @@ cd backend && source .venv/bin/activate
 python -m app.migrate && python -m app.seed            # Schema + tài khoản demo
 python -m app.features.voice.tts --download            # Model giọng đọc ZeroTTS (~900 MB, một lần)
 python -c "from huggingface_hub import hf_hub_download as d; d('juliozhao/DocLayout-YOLO-DocStructBench', 'doclayout_yolo_docstructbench_imgsz1024.pt', local_dir='data/models/doclayout')"  # Model bố cục tìm hình (~40 MB)
-python -m app.features.documents.ingest ~/Downloads/toan8.pdf --title "Toán 8 tập 2" --subject toan --grade 8
+python -m app.features.documents.ingest ~/Downloads/toan5.pdf --title "Toán 5 tập 2" --subject toan --grade 5
 python -m app.features.documents.outline <document_id>  # Sách nạp trước khi có dàn ý: rút dàn ý giảng (~6 s / bài)
 arq app.worker.WorkerSettings &                        # Worker xử lý PDF nền
 uvicorn app.main:app --port 8000                       # Đợi nạp model giọng đọc & embedding
@@ -279,7 +279,7 @@ Học sinh (không cần nhìn màn hình, không cần tìm nút nào):
 4. Phần có hình: **Vision** lấy dữ kiện hình đã duyệt, Tutor dựng hình trong đầu em bằng tưởng tượng, rồi hỏi tiếp. Màn hình hiện **Orchestrator → Vision → Tutor → Assessment**.
 5. Hỏi chen bất cứ lúc nào: *“Trục tung là trục nào?”* → LUSIA trả lời rồi nhắc lại câu hỏi đang chờ.
 6. Hết bài: LUSIA tóm tắt và mời *“kiểm tra mình”* → 3 câu trắc nghiệm bằng giọng nói → điểm.
-7. Mở `/dashboard`: lớp 8A hiện **Hiểu bài / Hiểu hình** (gồm cả câu kiểm tra từng phần) và chỗ **Yếu**.
+7. Mở `/dashboard`: lớp 5A hiện **Hiểu bài / Hiểu hình** (gồm cả câu kiểm tra từng phần) và chỗ **Yếu**.
 
 **Giám sát và debug** (`/monitor`): mỗi lượt học, vào bài, nghe thử và nạp sách là một *trace*: agent nào chạy, lượt gọi LLM nào (route, model, effort, thời gian, token, prompt và câu trả lời), lỗi ở đâu. Trang tổng hợp p50/p95 theo agent và route, tỉ lệ câu “không có trong SGK”, điểm trung bình câu kiểm tra, 👍/👎 kèm ghi chú cho từng trace. Mỗi câu trả lời cho học sinh có `trace_id` để tra lại. Ước tính chi phí: đặt `LLM_PRICE_IN_PER_M` và `LLM_PRICE_OUT_PER_M` (USD / 1 triệu token) trong `backend/.env`. Xem trace dạng **JSON lồng nhau** (lượt gọi LLM nằm trong `children` của agent), sao chép hoặc tải `trace-<id>.json`. Nội dung prompt chỉ lưu đủ cho lượt lỗi / bị từ chối và một mẫu ngẫu nhiên (`TRACE_PAYLOADS=sampled`, `TRACE_SAMPLE_RATE=0.25`; debug kỹ thì đặt `TRACE_PAYLOADS=all`); worker tự xoá nội dung sau `TRACE_PAYLOAD_DAYS=7` ngày (trừ trace đã đánh giá) và xoá trace sau `TRACE_KEEP_DAYS=90` ngày, chạy lúc 03:00.
 
@@ -510,7 +510,7 @@ docker compose ps
 
 ##### Bước 2: Khởi tạo dữ liệu người dùng mẫu (Seed Data)
 
-> ⚠️ **Quan trọng:** Tiến trình `migrate` chỉ tạo khung cơ sở dữ liệu. Để đăng nhập và thử nghiệm các tính năng, bạn cần khởi tạo dữ liệu ban đầu (giáo viên `colan`, lớp `8A`, học sinh `minh8a` và `hana8a`):
+> ⚠️ **Quan trọng:** Tiến trình `migrate` chỉ tạo khung cơ sở dữ liệu. Để đăng nhập và thử nghiệm các tính năng, bạn cần khởi tạo dữ liệu ban đầu (giáo viên `colan`, lớp `5A`, học sinh `minh5a` và `hana5a`):
 
 ```bash
 docker compose --profile app exec api python -m app.seed
@@ -519,7 +519,7 @@ docker compose --profile app exec api python -m app.seed
 Kiểm tra nhanh kết nối API và danh tính dev:
 ```bash
 curl -s http://localhost:8000/health/ready     # {"status":"ready","database":"ok","redis":"ok"}
-curl -s http://localhost:8000/me               # Trả về thông tin học sinh mặc định minh8a (tiếng Việt)
+curl -s http://localhost:8000/me               # Trả về thông tin học sinh mặc định minh5a (tiếng Việt)
 ```
 
 ##### Bước 3: Tải các model AI chạy cục bộ (ZeroTTS & DocLayout-YOLO)
@@ -595,14 +595,14 @@ pip install -r requirements.txt -r requirements-dev.txt
 
 # Cập nhật schema database và nạp dữ liệu demo:
 python -m app.migrate          # Áp dụng các migration SQL
-python -m app.seed             # Tạo tài khoản colan, minh8a, hana8a
+python -m app.seed             # Tạo tài khoản colan, minh5a, hana5a
 
 # Tải model AI cục bộ:
 python -m app.features.voice.tts --download
 python -c "from huggingface_hub import hf_hub_download as d; d('juliozhao/DocLayout-YOLO-DocStructBench', 'doclayout_yolo_docstructbench_imgsz1024.pt', local_dir='data/models/doclayout')"
 
 # Nạp sách giáo khoa (CLI):
-python -m app.features.documents.ingest ~/Downloads/toan8.pdf --title "Toán 8 tập 2" --subject toan --grade 8
+python -m app.features.documents.ingest ~/Downloads/toan5.pdf --title "Toán 5 tập 2" --subject toan --grade 5
 # Sách nạp trước khi có dàn ý giảng: rút dàn ý (một lượt LLM / bài)
 python -m app.features.documents.outline <document_id>
 
@@ -628,12 +628,12 @@ Schema nằm trong `backend/migrations/` (`000_init.sql`, `001_...sql`, …). `p
 #### 4. Danh tính phát triển (Dev Identity - `AUTH_MODE=dev`)
 
 Backend hiện chạy ở chế độ `AUTH_MODE=dev` (chế độ này tự động bị chặn nếu `APP_ENV=production`):
-- Mặc định: Request học sinh dùng `DEV_STUDENT_USERNAME=minh8a`, giáo viên dùng `DEV_TEACHER_USERNAME=colan`.
+- Mặc định: Request học sinh dùng `DEV_STUDENT_USERNAME=minh5a`, giáo viên dùng `DEV_TEACHER_USERNAME=colan`.
 - Chọn người dùng qua header HTTP: `X-Dev-User: <username>`.
 - Tra cứu danh tính hiện tại:
   ```bash
-  curl -s localhost:8000/me                            # minh8a (học sinh, tiếng Việt)
-  curl -s -H "X-Dev-User: hana8a" localhost:8000/me    # hana8a (học sinh, tiếng Nhật)
+  curl -s localhost:8000/me                            # minh5a (học sinh, tiếng Việt)
+  curl -s -H "X-Dev-User: hana5a" localhost:8000/me    # hana5a (học sinh, tiếng Nhật)
   curl -s -H "X-Dev-User: colan"  localhost:8000/me    # colan (giáo viên)
   ```
 

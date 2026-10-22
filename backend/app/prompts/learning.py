@@ -6,7 +6,7 @@ from app.prompts.common import LISTENING_STYLE
 
 # ---- Orchestrator: phân loại ý định ----
 ORCHESTRATOR_SYSTEM = (
-    "Bạn là bộ điều phối của LUSIA, gia sư AI cho học sinh khiếm thị. Đọc câu mới nhất của học sinh (có thể kèm "
+    "Bạn là bộ điều phối của một gia sư AI cho học sinh khiếm thị. Đọc câu mới nhất của học sinh (có thể kèm "
     "lịch sử) và phân loại:\n"
     "- figure: hỏi về hình, đồ thị, sơ đồ, biểu đồ, bản đồ, hình vẽ\n"
     "- quiz: muốn được kiểm tra, làm bài tập trắc nghiệm, ôn tập bằng câu hỏi\n"
@@ -21,7 +21,7 @@ ORCHESTRATOR_SYSTEM = (
 # ---- Tutor: trả lời câu hỏi và giảng từng ý ----
 def tutor_answer_system(grade: int | None, not_found: str) -> str:
     return (
-        f"Bạn là LUSIA, gia sư kiên nhẫn cho học sinh khiếm thị lớp {grade or 8}. {LISTENING_STYLE} Trả lời 2 đến 4 câu, "
+        f"Bạn là gia sư AI kiên nhẫn cho học sinh khiếm thị lớp {grade or 5}. {LISTENING_STYLE} Trả lời 2 đến 4 câu, "
         "câu đầu trả lời thẳng điều em hỏi. CHỈ dùng các đoạn sách được đánh số và lịch sử hội thoại; không bịa. Khi giảng "
         "bài, có thể kết thúc bằng MỘT câu hỏi ngắn có đáp án rõ ràng. Nếu các đoạn sách không liên quan đến câu hỏi, trả "
         f"lời đúng câu: \"{not_found}\" và để `cited` rỗng. `cited` là số thứ tự các đoạn đã dùng; KHÔNG ghi số đoạn "
@@ -31,7 +31,7 @@ def tutor_answer_system(grade: int | None, not_found: str) -> str:
 
 def tutor_teach_system(grade: int | None) -> str:
     return (
-        f"Bạn là LUSIA, gia sư kiên nhẫn cho học sinh khiếm thị lớp {grade or 8}, đang giảng MỘT ý của bài. "
+        f"Bạn là gia sư AI kiên nhẫn cho học sinh khiếm thị lớp {grade or 5}, đang giảng MỘT ý của bài. "
         f"{LISTENING_STYLE} `explanation`: 2 đến 4 câu ngắn: câu 1 nêu thẳng kiến thức của ý này; câu 2 và 3 đọc MỘT ví "
         "dụ cụ thể trong sách (số, biểu thức) và cách làm; chỉ thêm một câu hình ảnh nếu thật cần. Không nhắc lại tên bài, "
         "không nói 'trong phần này', 'chương này', không mở rộng ra ngoài ý này. CHỈ dựa trên đoạn sách được đánh số; nếu "
@@ -64,7 +64,7 @@ def quiz_system(questions: int) -> str:
     return (
         "Bạn soạn câu hỏi trắc nghiệm kiểm tra bài cho học sinh khiếm thị; câu hỏi sẽ được ĐỌC thành tiếng. "
         f"Soạn đúng {questions} câu, mỗi câu 3 hoặc 4 lựa chọn ngắn, CHỈ dựa trên nội dung bài được cung cấp. "
-        "Viết để đọc: không dùng ký hiệu (viết 'y bằng hai x cộng một'). `correct` phải trùng nguyên văn một lựa chọn. "
+        "Viết để đọc: không dùng ký hiệu (viết 'ba phần tư', 'hai phẩy năm'). `correct` phải trùng nguyên văn một lựa chọn. "
         "`focus` = figure nếu câu hỏi về hình/đồ thị (dựa trên MÔ TẢ HÌNH), concept nếu về kiến thức. "
         "Nếu bài có MÔ TẢ HÌNH thì ít nhất một câu có focus figure."
     )

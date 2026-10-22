@@ -29,7 +29,7 @@ async def start_quiz(api, textbook, db):
 
 
 async def test_quiz_generated_from_the_lesson(api, make_student, textbook, db):
-    student = make_student("minh8a")
+    student = make_student("minh5a")
     sid, reply = await start_quiz(api, textbook, db)
     assert reply["mode"] == "quiz" and [s["agent"] for s in reply["trace"]] == ["orchestrator", "assessment"]
     assert "Câu 1: Hàm số bậc nhất có dạng nào?" in reply["answer"] and "A, y bằng a x cộng b" in reply["answer"]
@@ -41,14 +41,14 @@ async def test_quiz_generated_from_the_lesson(api, make_student, textbook, db):
 
 
 async def test_quiz_without_lesson(api, make_student):
-    make_student("minh8a")
-    r = await api.post("/sessions", json={}, headers=as_user("minh8a"))  # không chọn bài → không giảng
+    make_student("minh5a")
+    r = await api.post("/sessions", json={}, headers=as_user("minh5a"))  # không chọn bài → không giảng
     reply = await ask(api, r.json()["id"], "kiểm tra mình đi", QUIZ_ROUTE)
     assert reply["answer"] == NO_LESSON and reply["mode"] == "chat"
 
 
 async def test_spoken_answers_graded_until_finished_and_mastery_split(api, make_student, textbook, db):
-    student = make_student("minh8a")
+    student = make_student("minh5a")
     sid, _ = await start_quiz(api, textbook, db)
     api.app.state.llm.calls.clear()
     r1 = await ask(api, sid, "câu A", {"choice_index": 0, "feedback": "Em nhớ bài tốt lắm."})
@@ -71,7 +71,7 @@ async def test_spoken_answers_graded_until_finished_and_mastery_split(api, make_
 
 
 async def test_invalid_draft_retried_then_rejected(api, make_student, textbook, db):
-    make_student("minh8a")
+    make_student("minh5a")
     bad = {"questions": [{"prompt": "x", "choices": ["a", "b"], "correct": "c", "explanation": "", "focus": "concept"}]}
     sid = await session(api, textbook["lessons"][2], db)
     reply = await ask(api, sid, "kiểm tra", bad, bad)  # "kiểm tra": Orchestrator nhận ra ngay, không gọi LLM
@@ -79,7 +79,7 @@ async def test_invalid_draft_retried_then_rejected(api, make_student, textbook, 
 
 
 async def test_quiz_is_drafted_from_the_outline_when_there_is_one(api, make_student, textbook, db):
-    make_student("minh8a")
+    make_student("minh5a")
     db.execute("INSERT INTO lesson_points (lesson_id, position, title, content, question, answer) VALUES"
                " (%s, 1, 'Đồ thị là đường thẳng', 'Đồ thị của y = ax + b là một đường thẳng.', 'Đường gì?', 'thẳng')",
                (textbook["lessons"][2],))

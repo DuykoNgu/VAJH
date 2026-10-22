@@ -29,13 +29,13 @@ def pending(db, sid):
 
 async def enter(api, lesson_id):
     api.app.state.llm.script(TEACH_1)
-    r = await api.post("/sessions", json={"lesson_id": str(lesson_id)}, headers=as_user("minh8a"))
+    r = await api.post("/sessions", json={"lesson_id": str(lesson_id)}, headers=as_user("minh5a"))
     assert r.status_code == 201, r.text
     return r.json()
 
 
 async def test_entering_a_lesson_teaches_part_1(api, make_student, textbook, db):
-    make_student("minh8a")
+    make_student("minh5a")
     body = await enter(api, textbook["lessons"][2])
     assert body["mode"] == "teach" and "Bài có 2 phần." in body["answer"] and "Phần 1." in body["answer"]
     assert body["answer"].endswith(TEACH_1["check_question"])
@@ -45,7 +45,7 @@ async def test_entering_a_lesson_teaches_part_1(api, make_student, textbook, db)
 
 
 async def test_correct_answer_then_figure_part_with_vision(api, make_student, textbook, db):
-    make_student("minh8a")
+    make_student("minh5a")
     sid = (await enter(api, textbook["lessons"][2]))["id"]
     r = await ask(api, sid, "một đường thẳng", {"is_student_question": False, "score": 1, "feedback": "Giỏi lắm.",
                                                 "re_explanation": ""})
@@ -58,7 +58,7 @@ async def test_correct_answer_then_figure_part_with_vision(api, make_student, te
 
 
 async def test_wrong_answer_re_explains(api, make_student, textbook, db):
-    make_student("minh8a")
+    make_student("minh5a")
     sid = (await enter(api, textbook["lessons"][2]))["id"]
     r = await ask(api, sid, "đường cong", {"is_student_question": False, "score": 0, "feedback": "Không sao.",
                                            "re_explanation": "Đồ thị hàm số bậc nhất luôn là đường thẳng."})
@@ -67,7 +67,7 @@ async def test_wrong_answer_re_explains(api, make_student, textbook, db):
 
 
 async def test_student_interrupts_with_a_question(api, make_student, textbook, db):
-    make_student("minh8a")
+    make_student("minh5a")
     sid = (await enter(api, textbook["lessons"][2]))["id"]
     r = await ask(api, sid, "Trục tung là trục nào?",
                   {"is_student_question": True, "score": 0, "feedback": "", "re_explanation": ""},
@@ -82,7 +82,7 @@ async def test_student_interrupts_with_a_question(api, make_student, textbook, d
 
 
 async def test_end_of_lesson_summary_offers_quiz_and_mastery_counts_checks(api, make_student, textbook, db):
-    student = make_student("minh8a")
+    student = make_student("minh5a")
     sid = (await enter(api, textbook["lessons"][2]))["id"]
     grade = {"is_student_question": False, "score": 1, "feedback": "Tốt.", "re_explanation": ""}
     await ask(api, sid, "một đường thẳng", grade)
@@ -97,12 +97,12 @@ async def test_end_of_lesson_summary_offers_quiz_and_mastery_counts_checks(api, 
 
 
 async def test_lesson_without_content(api, make_student, db):
-    make_student("minh8a")
+    make_student("minh5a")
     doc = db.execute("INSERT INTO documents (kind, title, subject, grade, storage_key, status, published_at) VALUES"
                      " ('textbook', 'Rỗng', 'toan', 8, 'sgk/r.pdf', 'ready', now()) RETURNING id").fetchone()[0]
     lesson = db.execute("INSERT INTO lessons (document_id, position, title, page_start, page_end)"
                         " VALUES (%s, 1, 'Bài trống', 1, 1) RETURNING id", (doc,)).fetchone()[0]
-    r = await api.post("/sessions", json={"lesson_id": str(lesson)}, headers=as_user("minh8a"))
+    r = await api.post("/sessions", json={"lesson_id": str(lesson)}, headers=as_user("minh5a"))
     assert "chưa có nội dung" in r.json()["answer"] and r.json()["mode"] == "chat"
 
 
@@ -115,10 +115,10 @@ def test_drop_trailing_question_keeps_single_question():
 
 
 async def test_hook_before_part_1_with_bank_suggestions(api, make_student, textbook):
-    make_student("minh8a")
+    make_student("minh5a")
     hook = "Em hãy tưởng tượng mình đứng giữa một ngã tư, hai con đường vuông góc dưới chân."
     api.app.state.llm.script({**TEACH_1, "hook": hook})
-    r = await api.post("/sessions", json={"lesson_id": str(textbook["lessons"][2])}, headers=as_user("minh8a"))
+    r = await api.post("/sessions", json={"lesson_id": str(textbook["lessons"][2])}, headers=as_user("minh5a"))
     assert f"Bài có 2 phần. {hook} Phần 1. {TEACH_1['explanation']}" in r.json()["answer"]
     task = api.app.state.llm.calls[-1]["messages"][-1]["content"]
     descartes = next(h for h in HOOKS if h.id == "descartes")
@@ -126,14 +126,14 @@ async def test_hook_before_part_1_with_bank_suggestions(api, make_student, textb
 
 
 async def test_invented_quotes_not_given_real_authors(api, make_student, textbook):
-    make_student("minh8a")
+    make_student("minh5a")
     await enter(api, textbook["lessons"][2])
     task = api.app.state.llm.calls[-1]["messages"][-1]["content"]
     assert "KHÔNG gán cho người thật có tên" in task
 
 
 async def test_later_parts_have_no_hook(api, make_student, textbook, db):
-    make_student("minh8a")
+    make_student("minh5a")
     sid = (await enter(api, textbook["lessons"][2]))["id"]
     await ask(api, sid, "một đường thẳng", {"is_student_question": False, "score": 1, "feedback": "Tốt.",
                                             "re_explanation": ""})
@@ -155,7 +155,7 @@ RIGHT = {"is_student_question": False, "score": 1, "feedback": "Tốt.", "re_exp
 
 
 async def test_outline_lesson_goes_straight_to_the_points(api, make_student, textbook, db):
-    make_student("minh8a")
+    make_student("minh5a")
     lesson, text_id, figure_id = textbook["lessons"][2], textbook["chunks"]["graph_text"], textbook["chunks"]["figure"]
     outline(db, lesson, "Bạn An đi bộ 2 km mỗi giờ; sau x giờ An đi được bao xa?", [
         ("Đồ thị là đường thẳng", "Đồ thị của y = ax + b là một đường thẳng.", "Đồ thị của y = 2x + 1 là đường gì?",
@@ -164,7 +164,7 @@ async def test_outline_lesson_goes_straight_to_the_points(api, make_student, tex
          [figure_id])])
     api.app.state.llm.script({**TEACH_1, "hook": "An đi 2 km mỗi giờ, sau x giờ đi được 2x km.",
                               "expected_answer": "đáp án Tutor tự nghĩ"})
-    r = await api.post("/sessions", json={"lesson_id": str(lesson)}, headers=as_user("minh8a"))
+    r = await api.post("/sessions", json={"lesson_id": str(lesson)}, headers=as_user("minh5a"))
     answer = r.json()["answer"]
     assert "Bài có 2 ý: một, Đồ thị là đường thẳng; hai, Giao điểm với trục tung." in answer      # lộ trình trước
     assert "An đi 2 km mỗi giờ, sau x giờ đi được 2x km. Ý 1: Đồ thị là đường thẳng." in answer
@@ -187,7 +187,7 @@ async def test_outline_lesson_goes_straight_to_the_points(api, make_student, tex
 
 
 async def test_without_outline_the_opening_hook_is_direct(api, make_student, textbook):
-    make_student("minh8a")
+    make_student("minh5a")
     await enter(api, textbook["lessons"][1])                          # "Bài 1. Hàm số bậc nhất": không có câu đúng chủ đề
     task = api.app.state.llm.calls[-1]["messages"][-1]["content"]
     assert "nói thẳng bài này giúp em làm được gì" in task and "Gợi ý" not in task and "Có thể dùng" not in task
@@ -206,9 +206,9 @@ async def test_next_part_is_prepared_while_the_student_answers(api, make_student
     from app.features.learning import service as learning
 
     monkeypatch.setattr(get_settings(), "prefetch_parts", True)
-    make_student("minh8a")
+    make_student("minh5a")
     api.app.state.llm.script(TEACH_1, TEACH_2)                      # ý 1 khi vào bài, ý 2 được soạn sẵn ngay sau đó
-    r = await api.post("/sessions", json={"lesson_id": str(textbook["lessons"][2])}, headers=as_user("minh8a"))
+    r = await api.post("/sessions", json={"lesson_id": str(textbook["lessons"][2])}, headers=as_user("minh5a"))
     sid = r.json()["id"]
     for _ in range(100):                                            # chờ việc soạn sẵn (chạy ngầm) xong
         task = learning._AHEAD.get((uuid.UUID(sid), 2))

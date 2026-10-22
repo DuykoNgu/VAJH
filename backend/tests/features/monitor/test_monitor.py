@@ -19,7 +19,7 @@ async def api(test_database):
 
 @pytest.fixture
 def people(make_student, make_teacher):
-    make_student("minh8a")
+    make_student("minh5a")
     make_teacher("colan")
 
 
@@ -45,7 +45,7 @@ async def test_errors_are_traced(api, people, textbook, db):
     sid = await session(api, textbook["lessons"][1], db)
     api.app.state.llm.script(RuntimeError("provider down"))
     with pytest.raises(RuntimeError):
-        await api.post(f"/sessions/{sid}/turns", json={"text": "Hàm số là gì?"}, headers=as_user("minh8a"))
+        await api.post(f"/sessions/{sid}/turns", json={"text": "Hàm số là gì?"}, headers=as_user("minh5a"))
     status, error = db.execute("SELECT status, error FROM traces WHERE kind = 'turn'").fetchone()
     assert status == "error" and "provider down" in error
     span = db.execute("SELECT s.name, s.status, s.detail->>'error' FROM trace_spans s JOIN traces t ON t.id = s.trace_id"
@@ -98,7 +98,7 @@ async def test_trace_failure_never_breaks_the_turn(api, people, textbook, db, mo
 
 
 async def test_students_cannot_read_monitoring(api, people):
-    assert (await api.get("/monitor/summary", headers=as_user("minh8a"))).status_code == 400
+    assert (await api.get("/monitor/summary", headers=as_user("minh5a"))).status_code == 400
 
 
 @pytest.fixture

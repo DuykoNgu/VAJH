@@ -18,7 +18,7 @@ async def api(test_database):
 def draft(db, textbook, make_teacher, make_student):
     """SGK mẫu ở dạng bản nháp (1 hình đang chờ duyệt)."""
     make_teacher("colan")
-    make_student("minh8a")
+    make_student("minh5a")
     db.execute("UPDATE documents SET published_at = NULL WHERE id = %s", (textbook["document"],))
     return textbook
 
@@ -28,9 +28,9 @@ def doc_url(textbook, action=""):
 
 
 async def test_draft_hidden_from_students(api, draft):
-    docs = (await api.get("/documents", headers=as_user("minh8a"))).json()
+    docs = (await api.get("/documents", headers=as_user("minh5a"))).json()
     assert str(draft["document"]) not in {d["id"] for d in docs}
-    r = await api.post("/sessions", json={"lesson_id": str(draft["lessons"][1])}, headers=as_user("minh8a"))
+    r = await api.post("/sessions", json={"lesson_id": str(draft["lessons"][1])}, headers=as_user("minh5a"))
     assert r.status_code == 409
 
 
@@ -44,7 +44,7 @@ async def test_publish_after_review_then_reprocess_unpublishes(api, draft, db):
     await api.post(f"/teacher/figures/{draft['chunks']['figure']}/review", json={"action": "approve"}, headers=TEACHER)
     r = await api.post(doc_url(draft, "/publish"), headers=TEACHER)
     assert r.status_code == 200 and r.json()["published"] is True
-    docs = (await api.get("/documents", headers=as_user("minh8a"))).json()
+    docs = (await api.get("/documents", headers=as_user("minh5a"))).json()
     assert str(draft["document"]) in {d["id"] for d in docs}
     await api.post(f"/documents/{draft['document']}/reprocess", headers=TEACHER)
     assert db.execute("SELECT published_at FROM documents WHERE id = %s", (draft["document"],)).fetchone()[0] is None
@@ -82,7 +82,7 @@ async def test_remove_noise_and_figures_only_via_review(api, draft, db):
 
 
 async def test_students_cannot_curate(api, draft):
-    r = await api.post(doc_url(draft, "/publish"), headers=as_user("minh8a"))
+    r = await api.post(doc_url(draft, "/publish"), headers=as_user("minh5a"))
     assert r.status_code == 400  # danh tính dev: endpoint cần giáo viên
 
 
@@ -102,9 +102,9 @@ async def test_teacher_upload_reaches_students_only_after_publish(api, draft, db
 
     doc = (await upload(api, pdfs.plain_pdf(1), "colan")).json()["id"]
     db.execute("UPDATE documents SET status = 'ready' WHERE id = %s", (doc,))
-    assert doc not in {d["id"] for d in (await api.get("/documents", headers=as_user("minh8a"))).json()}
+    assert doc not in {d["id"] for d in (await api.get("/documents", headers=as_user("minh5a"))).json()}
     await api.post(f"/curation/documents/{doc}/publish", headers=TEACHER)
-    assert doc in {d["id"] for d in (await api.get("/documents", headers=as_user("minh8a"))).json()}
+    assert doc in {d["id"] for d in (await api.get("/documents", headers=as_user("minh5a"))).json()}
 
 
 async def test_rejected_figure_listed_without_part_number(api, draft):
@@ -167,7 +167,7 @@ async def test_curation_upload_belongs_to_the_teacher(api, draft, db, make_teach
     owner = db.execute("SELECT u.username FROM documents d JOIN users u ON u.id = d.uploaded_by WHERE d.id = %s",
                        (r.json()["id"],)).fetchone()[0]
     assert owner == "colan"
-    student = await api.post("/curation/documents", data=form, files=files, headers=as_user("minh8a"))
+    student = await api.post("/curation/documents", data=form, files=files, headers=as_user("minh5a"))
     assert student.status_code == 400  # danh tính dev: endpoint cần giáo viên
 
 
@@ -177,5 +177,5 @@ async def test_approve_all_figures_then_publish(api, draft, db):
     assert r.status_code == 200 and r.json() == {"approved": 1}
     assert db.execute("SELECT review FROM chunks WHERE id = %s", (rejected,)).fetchone()[0] == "rejected"
     assert (await api.post(doc_url(draft, "/publish"), headers=TEACHER)).json()["published"] is True
-    student = await api.post(doc_url(draft, "/figures/approve-all"), headers=as_user("minh8a"))
+    student = await api.post(doc_url(draft, "/figures/approve-all"), headers=as_user("minh5a"))
     assert student.status_code == 400

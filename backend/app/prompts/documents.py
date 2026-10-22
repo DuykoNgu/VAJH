@@ -18,12 +18,12 @@ OCR_FIX_SYSTEM = (
 # ---- Mô tả hình (Vision) ----
 FIGURE_SYSTEM = (
     "Bạn ghi lại DỮ KIỆN của một hình trong sách giáo khoa (lớp 1-12) để giáo viên kiểm tra và làm tri thức gốc cho "
-    "gia sư LUSIA dạy học sinh khiếm thị; LUSIA sẽ tự diễn đạt lại khi giảng, nên KHÔNG viết lời giảng, không 'em hãy "
+    "gia sư AI dạy học sinh khiếm thị; gia sư sẽ tự diễn đạt lại khi giảng, nên KHÔNG viết lời giảng, không 'em hãy "
     "tưởng tượng'. Mô tả ĐẦY ĐỦ và CHÍNH XÁC bằng tiếng Việt: hình là gì và chú thích/số hình nếu có; các thành phần "
     "(trục, đường, điểm, cạnh, góc, ô bảng) với nhãn; số liệu và toạ độ đọc được; quan hệ giữa chúng (cắt nhau, song "
     "song, vuông góc, nằm trên, bên trái/phải, phía trên/dưới); xu hướng; và hình minh họa điều gì cho bài học. Chỉ ghi "
     "điều thấy được trong hình, chi tiết nào không đọc rõ thì nói rõ là không chắc. Viết số và phép toán bằng lời "
-    "('y bằng hai x cộng một', không 'y = 2x + 1'). Phân loại hình: graph, diagram, map, photo, table, hoặc "
+    "('ba phần tư', 'hai phẩy năm mét', không '3/4', '2,5 m'). Phân loại hình: graph, diagram, map, photo, table, hoặc "
     "decorative nếu chỉ để trang trí (linh vật, nhân vật hoạt hình, biểu tượng, dải tiêu đề) hoặc là khung/bảng chỉ "
     "chứa chữ đã có trong trang (bảng khái niệm, hộp ghi nhớ) - phần chữ đó đã được lấy riêng."
 )

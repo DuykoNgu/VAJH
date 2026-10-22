@@ -5,7 +5,7 @@ async def test_allowed_origin_may_send_dev_user_header(client):
     assert pre.status_code == 200
     assert pre.headers["access-control-allow-origin"] == "http://localhost:3000"
     assert "x-dev-user" in pre.headers["access-control-allow-headers"].lower()
-    r = await client.get("/health", headers={"Origin": "http://localhost:3000", "X-Dev-User": "minh8a"})
+    r = await client.get("/health", headers={"Origin": "http://localhost:3000", "X-Dev-User": "minh5a"})
     assert r.headers["access-control-allow-origin"] == "http://localhost:3000"
     assert "access-control-allow-credentials" not in r.headers
 

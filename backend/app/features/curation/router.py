@@ -112,7 +112,7 @@ class Preview(BaseModel):
     parts: int
     answer: str
     sentences: list[str]
-    note: str = "Đây là MỘT ví dụ; mỗi lần giảng LUSIA diễn đạt khác đi, chỉ tri thức gốc là cố định."
+    note: str = "Đây là MỘT ví dụ; mỗi lần giảng gia sư diễn đạt khác đi, chỉ tri thức gốc là cố định."
 
 
 async def _rows(sql: str, params=()):

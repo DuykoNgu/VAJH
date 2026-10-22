@@ -20,10 +20,10 @@ async def app_client(client):
 
 
 async def test_student_context_fields(app_client, make_student):
-    uid = make_student("minh8a")
+    uid = make_student("minh5a")
     r = await app_client.get("/me")
-    assert r.json() == {"mode": "dev", "user_id": str(uid), "full_name": "Em Minh", "username": "minh8a",
-                        "role": "student", "grade": 8, "language": "vi", "speech_rate": 1.0}
+    assert r.json() == {"mode": "dev", "user_id": str(uid), "full_name": "Em Minh", "username": "minh5a",
+                        "role": "student", "grade": 5, "language": "vi", "speech_rate": 1.0}
 
 
 async def test_teacher_context_fields(app_client, make_teacher):
@@ -33,8 +33,8 @@ async def test_teacher_context_fields(app_client, make_teacher):
 
 
 async def test_default_student(app_client, make_student):
-    make_student("minh8a")
-    assert (await app_client.get("/_t/student")).json()["username"] == "minh8a"
+    make_student("minh5a")
+    assert (await app_client.get("/_t/student")).json()["username"] == "minh5a"
 
 
 async def test_default_teacher(app_client, make_teacher):
@@ -43,10 +43,10 @@ async def test_default_teacher(app_client, make_teacher):
 
 
 async def test_header_selects_another_student_normalised(app_client, make_student):
-    make_student("minh8a")
-    make_student("hana8a", language="ja", full_name="Hana")
-    r = await app_client.get("/_t/student", headers=as_user("Hana8A "))
-    assert r.json() == {"username": "hana8a", "role": "student", "language": "ja"}
+    make_student("minh5a")
+    make_student("hana5a", language="ja", full_name="Hana")
+    r = await app_client.get("/_t/student", headers=as_user("Hana5A "))
+    assert r.json() == {"username": "hana5a", "role": "student", "language": "ja"}
 
 
 async def test_header_names_user_with_wrong_role(app_client, make_teacher):
@@ -66,13 +66,13 @@ async def test_default_user_not_seeded(app_client):
 
 
 async def test_me_japanese_student(app_client, make_student):
-    make_student("hana8a", language="ja")
-    r = await app_client.get("/me", headers=as_user("hana8a"))
+    make_student("hana5a", language="ja")
+    r = await app_client.get("/me", headers=as_user("hana5a"))
     assert r.json()["role"] == "student" and r.json()["language"] == "ja"
 
 
 async def test_dependency_override_helper(app_client, make_student):
-    uid = make_student("minh8a")
-    fake = UserContext(uid, "Em Minh", "minh8a", "student", 8, "vi", 1.0)
+    uid = make_student("minh5a")
+    fake = UserContext(uid, "Em Minh", "minh5a", "student", 5, "vi", 1.0)
     override_identity(app_client.app, fake)
-    assert (await app_client.get("/_t/student", headers=as_user("nobody"))).json()["username"] == "minh8a"
+    assert (await app_client.get("/_t/student", headers=as_user("nobody"))).json()["username"] == "minh5a"

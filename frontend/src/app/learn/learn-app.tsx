@@ -20,7 +20,7 @@ type MenuLesson = Lesson & { documentTitle: string };
 
 const STARTING = "Mình bắt đầu bài nhé.";
 const HELP =
-  "Em giữ phím cách để nói với LUSIA. Nói tiếp để học phần sau. Nói kiểm tra mình để làm bài. Nói nhắc lại để nghe lại. " +
+  "Em giữ phím cách để nói với gia sư. Nói tiếp để học phần sau. Nói kiểm tra mình để làm bài. Nói nhắc lại để nghe lại. " +
   "Nói chậm lại hoặc nhanh lên để đổi tốc độ đọc. Nói đổi bài để chọn bài khác. Phím R để nghe lại, phím Escape để dừng giọng đọc.";
 const AGENT_NAMES: Record<string, string> = {
   orchestrator: "Orchestrator", knowledge: "Knowledge", vision: "Vision", tutor: "Tutor", assessment: "Assessment",
@@ -28,8 +28,8 @@ const AGENT_NAMES: Record<string, string> = {
 const STATUS_TEXT: Record<Status, string> = {
   idle: "Sẵn sàng. Giữ phím cách để nói.",
   listening: "Đang nghe…",
-  thinking: "LUSIA đang suy nghĩ…",
-  speaking: "LUSIA đang nói. Nhấn phím cách để ngắt và nói.",
+  thinking: "Gia sư đang suy nghĩ…",
+  speaking: "Gia sư đang nói. Nhấn phím cách để ngắt và nói.",
 };
 
 function isTyping(target: EventTarget | null) {
@@ -100,7 +100,7 @@ export default function LearnApp() {
       setHighlight(0);
       readMenu(all, who.full_name);
     } catch {
-      say("Mình không kết nối được máy chủ LUSIA. Em nhờ thầy cô kiểm tra nhé.");
+      say("Mình không kết nối được máy chủ. Em nhờ thầy cô kiểm tra nhé.");
     }
   }, [readMenu, say]);
 
@@ -271,7 +271,7 @@ export default function LearnApp() {
       <main className="flex min-h-screen items-center justify-center p-6">
         <button autoFocus onClick={begin}
                 className="w-full max-w-3xl rounded-2xl border-4 p-12 text-3xl font-bold focus:outline-4">
-          Học cùng LUSIA — nhấn phím bất kỳ để bắt đầu
+          Học cùng gia sư — nhấn phím bất kỳ để bắt đầu
         </button>
       </main>
     );
@@ -281,7 +281,7 @@ export default function LearnApp() {
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 p-6 text-lg">
-      <h1 className="text-3xl font-bold">Học cùng LUSIA</h1>
+      <h1 className="text-3xl font-bold">Học cùng gia sư</h1>
       <p role="status" aria-live="polite" className="rounded-lg border-2 p-3 font-semibold">
         {STATUS_TEXT[status]}
         {interim && <span className="block font-normal">“{interim}”</span>}
@@ -348,7 +348,7 @@ export default function LearnApp() {
             <ol aria-live="off" className="flex flex-col gap-2">
               {entries.map((e, i) => (
                 <li key={i} className={e.role === "student" ? "rounded-lg border p-3" : "rounded-lg border-2 p-3"}>
-                  <span className="font-semibold">{e.role === "student" ? "Em: " : "LUSIA: "}</span>{e.text}
+                  <span className="font-semibold">{e.role === "student" ? "Em: " : "Gia sư: "}</span>{e.text}
                 </li>
               ))}
             </ol>

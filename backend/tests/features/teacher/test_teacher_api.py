@@ -29,7 +29,7 @@ def quiz_result(db, student, lesson, *answers):
 
 async def test_weak_figure_understanding(api, db, make_student, make_teacher, textbook):
     teacher = make_teacher("colan")
-    minh = make_student("minh8a")
+    minh = make_student("minh5a")
     other = make_teacher("cothu", full_name="Cô Thu")
     class_with(db, teacher, minh)
     class_with(db, other, make_student("an8b", full_name="Em An"), name="8B")
@@ -38,7 +38,7 @@ async def test_weak_figure_understanding(api, db, make_student, make_teacher, te
     assert [c["name"] for c in body] == ["8A"]                               # chỉ lớp của mình
     (student,) = body[0]["students"]
     (lesson,) = student["lessons"]
-    assert student["username"] == "minh8a" and lesson["title"] == "Bài 2. Đồ thị của hàm số bậc nhất"
+    assert student["username"] == "minh5a" and lesson["title"] == "Bài 2. Đồ thị của hàm số bậc nhất"
     assert (lesson["concept_mastery"], lesson["figure_mastery"], lesson["weak"], lesson["weak_in"]) == \
         (1.0, 0.0, True, ["figure"])
 

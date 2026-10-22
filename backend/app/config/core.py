@@ -11,7 +11,7 @@ class CoreConfig(BaseModel):
     app_env: Literal["development", "test", "production"] = "development"
     # Chỉ có chế độ dev cho tới giai đoạn 12 (authentication)
     auth_mode: Literal["dev"] = "dev"
-    dev_student_username: str = "minh8a"
+    dev_student_username: str = "minh5a"
     dev_teacher_username: str = "colan"
 
     database_url: str

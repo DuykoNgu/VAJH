@@ -23,7 +23,7 @@ TEACH = {"explanation": "Đồ thị hàm số bậc nhất là một đường 
 async def session(api, lesson_id, db=None):
     """Vào bài (LUSIA giảng phần 1 và đặt câu hỏi kiểm tra). Có `db` → coi như câu hỏi đó đã được trả lời."""
     api.app.state.llm.script(TEACH)
-    r = await api.post("/sessions", json={"lesson_id": str(lesson_id)}, headers=as_user("minh8a"))
+    r = await api.post("/sessions", json={"lesson_id": str(lesson_id)}, headers=as_user("minh5a"))
     assert r.status_code == 201, r.text
     if db is not None:
         db.execute("INSERT INTO answers (question_id, answer_text, score, feedback) SELECT q.id, 'x', 1, 'f'"
@@ -34,13 +34,13 @@ async def session(api, lesson_id, db=None):
 
 async def ask(api, sid, text, *script):
     api.app.state.llm.script(*script)
-    r = await api.post(f"/sessions/{sid}/turns", json={"text": text}, headers=as_user("minh8a"))
+    r = await api.post(f"/sessions/{sid}/turns", json={"text": text}, headers=as_user("minh5a"))
     assert r.status_code == 200, r.text
     return r.json()
 
 
 async def test_start_and_ask(api, make_student, textbook, db):
-    make_student("minh8a")
+    make_student("minh5a")
     sid = await session(api, textbook["lessons"][2], db)
     body = await ask(api, sid, "Giải thích đồ thị trong bài này", FIGURE_ROUTE, {"answer": ANSWER, "cited": [1]})
     assert body["answer"].endswith(ANSWER)
@@ -49,7 +49,7 @@ async def test_start_and_ask(api, make_student, textbook, db):
 
 
 async def test_figure_question_uses_vision_with_disclaimer_once(api, make_student, textbook, db):
-    make_student("minh8a")
+    make_student("minh5a")
     sid = await session(api, textbook["lessons"][2], db)
     reply = await ask(api, sid, "Giải thích giúp mình đồ thị y = 2x + 1", FIGURE_ROUTE,
                       {"answer": f"{DISCLAIMER} {ANSWER}", "cited": [1]})  # model tự chèn câu cảnh báo
@@ -60,7 +60,7 @@ async def test_figure_question_uses_vision_with_disclaimer_once(api, make_studen
 
 
 async def test_approved_figure_has_no_disclaimer(api, make_student, textbook, db):
-    make_student("minh8a")
+    make_student("minh5a")
     db.execute("UPDATE chunks SET review = 'approved', reviewed_at = now() WHERE id = %s",
                (textbook["chunks"]["figure"],))
     sid = await session(api, textbook["lessons"][2], db)
@@ -69,7 +69,7 @@ async def test_approved_figure_has_no_disclaimer(api, make_student, textbook, db
 
 
 async def test_concept_question_skips_vision(api, make_student, textbook, db):
-    make_student("minh8a")
+    make_student("minh5a")
     sid = await session(api, textbook["lessons"][1], db)
     reply = await ask(api, sid, "Hàm số bậc nhất là gì?", EXPLAIN_ROUTE,
                       {"answer": "Hàm số bậc nhất có dạng y bằng a x cộng b. Theo em a có thể bằng không không?",
@@ -79,7 +79,7 @@ async def test_concept_question_skips_vision(api, make_student, textbook, db):
 
 
 async def test_follow_up_uses_history(api, make_student, textbook, db):
-    make_student("minh8a")
+    make_student("minh5a")
     sid = await session(api, textbook["lessons"][2], db)
     await ask(api, sid, "Giải thích đồ thị y = 2x + 1", FIGURE_ROUTE, {"answer": ANSWER, "cited": [1]})
     llm = api.app.state.llm
@@ -95,7 +95,7 @@ async def test_follow_up_uses_history(api, make_student, textbook, db):
 
 
 async def test_out_of_textbook(api, make_student, textbook, db):
-    make_student("minh8a")
+    make_student("minh5a")
     sid = await session(api, textbook["lessons"][1], db)
     reply = await ask(api, sid, "Đội nào thắng trận bóng tối qua?", {"intent": "other", "query": "trận bóng đá"},
                       {"answer": NOT_FOUND, "cited": []})
@@ -104,7 +104,7 @@ async def test_out_of_textbook(api, make_student, textbook, db):
 
 
 async def test_unknown_and_ended_sessions(api, make_student, textbook, db):
-    make_student("minh8a")
+    make_student("minh5a")
     missing = "00000000-0000-0000-0000-000000000000"
     assert (await api.post(f"/sessions/{missing}/turns", json={"text": "x"})).status_code == 404
     sid = await session(api, textbook["lessons"][1], db)
@@ -114,7 +114,7 @@ async def test_unknown_and_ended_sessions(api, make_student, textbook, db):
 
 
 async def test_citation_numbers_never_reach_the_spoken_answer(api, make_student, textbook, db):
-    make_student("minh8a")
+    make_student("minh5a")
     sid = await session(api, textbook["lessons"][1], db)
     reply = await ask(api, sid, "Hàm số bậc nhất là gì?", EXPLAIN_ROUTE,
                       {"answer": "Hàm số bậc nhất có dạng y = ax + b. [1] Em thử lấy ví dụ nhé? [1, 2]", "cited": [1]})

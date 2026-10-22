@@ -10,8 +10,8 @@ from app.config import get_settings
 from app.core.identity import DEV_USER_HEADER, NO_CREDENTIAL
 
 TEACHER = ("colan", "Cô Lan")
-CLASS_NAME = "8A"
-STUDENTS = [("minh8a", "Em Minh", 8, "vi"), ("hana8a", "Hana", 8, "ja")]
+CLASS_NAME = "5A"
+STUDENTS = [("minh5a", "Em Minh", 5, "vi"), ("hana5a", "Hana", 5, "ja")]
 
 
 def _user(conn, username: str, full_name: str):

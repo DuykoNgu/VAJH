@@ -14,7 +14,7 @@ END $$ LANGUAGE plpgsql;
 -- Dữ liệu mẫu theo kịch bản demo
 INSERT INTO users (id, full_name, username, password_hash) VALUES
  ('00000000-0000-0000-0000-000000000001', 'Cô Lan', 'colan', 'x'),
- ('00000000-0000-0000-0000-000000000002', 'Em Minh', 'minh8a', 'x');
+ ('00000000-0000-0000-0000-000000000002', 'Em Minh', 'minh5a', 'x');
 INSERT INTO teachers VALUES ('00000000-0000-0000-0000-000000000001');
 INSERT INTO students (user_id, grade) VALUES ('00000000-0000-0000-0000-000000000002', 8);
 INSERT INTO classes (id, teacher_id, name) VALUES ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-000000000001', '8A');

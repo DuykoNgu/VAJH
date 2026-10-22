@@ -1,6 +1,6 @@
 """Nạp sách giáo khoa (không cần danh tính):
 
-    python -m app.features.documents.ingest sgk/toan8-tap2.pdf --title "Toán 8 tập 2" --subject toan --grade 8
+    python -m app.features.documents.ingest sgk/toan5-tap2.pdf --title "Toán 5 tập 2" --subject toan --grade 5
 
 Xử lý ngay trong tiến trình (không cần worker) rồi in tóm tắt. PDF SGK không commit vào repo (bản quyền).
 """

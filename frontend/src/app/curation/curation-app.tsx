@@ -56,7 +56,7 @@ function UploadForm({ onUploaded }: { onUploaded: (message: string) => void }) {
         <input name="file" type="file" accept="application/pdf" required className="rounded border-2 p-1" />
       </label>
       <label className="flex flex-col gap-1">Tên tài liệu
-        <input name="title" required className="rounded border-2 p-1" placeholder="Toán 8 — Tập 1" />
+        <input name="title" required className="rounded border-2 p-1" placeholder="Toán 5 — Tập 1" />
       </label>
       <label className="flex flex-col gap-1">Môn
         <select name="subject" defaultValue="toan" className="rounded border-2 p-1">
@@ -64,7 +64,7 @@ function UploadForm({ onUploaded }: { onUploaded: (message: string) => void }) {
         </select>
       </label>
       <label className="flex flex-col gap-1">Lớp
-        <input name="grade" type="number" min={1} max={12} defaultValue={8} required className="w-20 rounded border-2 p-1" />
+        <input name="grade" type="number" min={1} max={12} defaultValue={5} required className="w-20 rounded border-2 p-1" />
       </label>
       <button disabled={busy} className={`${button} font-semibold`}>Tải lên</button>
     </form>
@@ -137,7 +137,7 @@ function FigureBlock({ part, actions }: { part: Part; actions: Actions }) {
       {/* eslint-disable-next-line @next/next/no-img-element -- ảnh từ API backend, không qua tối ưu ảnh của Next */}
       <img src={`${API_URL}${part.image_url}`} alt={`Hình trang ${part.page}`} className="max-h-72 w-fit border" />
       <label className="flex flex-col gap-1">
-        Dữ kiện của hình (kiểm tra đúng và đủ; LUSIA tự diễn đạt khi giảng)
+        Dữ kiện của hình (kiểm tra đúng và đủ; gia sư tự diễn đạt khi giảng)
         <textarea className="min-h-28 rounded border-2 p-2" value={text} onChange={(e) => setText(e.target.value)} />
       </label>
       <div className="flex flex-wrap gap-2">
@@ -187,7 +187,7 @@ function PointEditor({ lesson, point, number, actions }: { lesson: Lesson; point
         {point.pages.length > 0 && <span className="font-normal"> · nguồn trang {point.pages.join(", ")}</span>}
       </p>
       {number !== null && field("title", "Tên ý")}
-      {field("content", number === null ? "Tình huống (LUSIA dùng để dẫn vào bài)" : "Kiến thức nêu thẳng + ví dụ trong sách", 3)}
+      {field("content", number === null ? "Tình huống (gia sư dùng để dẫn vào bài)" : "Kiến thức nêu thẳng + ví dụ trong sách", 3)}
       {number !== null && field("question", "Câu hỏi kiểm tra")}
       {number !== null && field("answer", "Đáp án")}
       <div className="flex flex-wrap gap-2">
@@ -233,7 +233,7 @@ function LessonView({ lesson, actions }: { lesson: Lesson; actions: Actions }) {
 
       <div className="flex flex-col gap-2">
         <h4 className="font-semibold">
-          LUSIA sẽ giảng {lesson.teaching.length} {points.length ? "ý (theo dàn ý)" : "phần (đoạn SGK đã lọc nhiễu — chưa có dàn ý)"}
+          Gia sư sẽ giảng {lesson.teaching.length} {points.length ? "ý (theo dàn ý)" : "phần (đoạn SGK đã lọc nhiễu — chưa có dàn ý)"}
         </h4>
         <ol className="flex flex-col gap-1">
           {lesson.teaching.map((t) => (
@@ -368,7 +368,7 @@ export default function CurationApp() {
       <h1 className="text-3xl font-bold">Kiểm duyệt nội dung</h1>
       <p>
         Bước 1 — chuẩn bị tri thức: tải sách lên, kiểm tra đoạn văn và dữ kiện của từng hình, rồi xuất bản.
-        Học sinh chỉ học tài liệu đã xuất bản. Đây là cơ sở của bài học; cách LUSIA diễn đạt sẽ linh hoạt mỗi lần giảng.
+        Học sinh chỉ học tài liệu đã xuất bản. Đây là cơ sở của bài học; cách gia sư diễn đạt sẽ linh hoạt mỗi lần giảng.
       </p>
       <p role="status" aria-live="polite" className="font-semibold">{message}</p>
 
@@ -411,7 +411,7 @@ export default function CurationApp() {
           </div>
           {sample && (
             // nổi ở góc màn hình: thấy ngay cạnh nút vừa bấm dù đang cuộn tới đâu
-            <aside aria-label="Ví dụ cách LUSIA giảng"
+            <aside aria-label="Ví dụ cách gia sư giảng"
                    className="fixed right-4 bottom-4 left-4 z-10 ml-auto flex max-h-[50vh] max-w-xl flex-col gap-2 overflow-y-auto rounded-lg border-2 border-sky-600 bg-white p-4 shadow-lg">
               <h3 className="font-semibold">Nghe thử: {sample.title}, mục {sample.part}/{sample.parts}</h3>
               <p>{sample.answer}</p>

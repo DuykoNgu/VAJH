@@ -159,7 +159,7 @@ class Registry:
 
 
 NOT_AVAILABLE = {
-    "vi": "Xin lỗi, LUSIA chưa làm được việc này. Tính năng này đang được phát triển.",
+    "vi": "Xin lỗi, mình chưa làm được việc này. Tính năng này đang được phát triển.",
     "ja": "申し訳ありません。この機能はまだ準備中です。",
 }
 

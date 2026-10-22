@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "LUSIA",
+  title: "Gia sư AI",
+  icons: { icon: "/logo.svg" },
   description: "AI Agent hỗ trợ học tập cho học sinh khiếm thị",
 };
 

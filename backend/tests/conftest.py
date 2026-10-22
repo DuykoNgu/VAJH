@@ -91,7 +91,7 @@ from app.core.identity import DEV_USER_HEADER, NO_CREDENTIAL, UserContext, curre
 
 @pytest.fixture
 def make_student(db):
-    def _make(username="minh8a", *, grade=8, language="vi", speech_rate=1.0, full_name="Em Minh"):
+    def _make(username="minh5a", *, grade=5, language="vi", speech_rate=1.0, full_name="Em Minh"):
         uid = db.execute("INSERT INTO users (full_name, username, password_hash) VALUES (%s, %s, %s) RETURNING id",
                          (full_name, username, NO_CREDENTIAL)).fetchone()[0]
         db.execute("INSERT INTO students (user_id, grade, language, speech_rate) VALUES (%s, %s, %s, %s)",

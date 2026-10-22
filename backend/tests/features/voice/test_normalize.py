@@ -18,6 +18,12 @@ from app.features.voice.normalize import normalize_for_speech, number_words
     ("Thu gọn 4,5x^2y", "Thu gọn bốn phẩy năm x bình phương y"),
     ("2,5x - 0,05", "hai phẩy năm x trừ không phẩy không năm"),
     ("-x^6y", "trừ x mũ sáu y"),
+    ("Phân số 3/4", "Phân số ba phần bốn"),
+    ("Tính 3/4 + 1/2", "Tính ba phần bốn cộng một phần hai"),
+    ("3/4 = 0,75", "ba phần bốn bằng không phẩy bảy mươi lăm"),
+    ("4,5 x 2 = 9", "bốn phẩy năm nhân hai bằng chín"),
+    ("Tỉ số 3 : 5", "Tỉ số ba chia năm"),
+    ("x/2 = 3", "x chia hai bằng ba"),
 ])
 def test_maths_read_aloud(text, spoken):
     assert normalize_for_speech(text) == spoken
@@ -32,6 +38,8 @@ def test_maths_read_aloud(text, spoken):
     "Ý 1: Đơn thức là gì.",
     "Bài 3: Phép cộng và phép trừ đa thức.",
     "Lúc 7:30 em đi học.",
+    "Ngày 2/9 là ngày Quốc khánh.",
+    "Hạn nộp 12/10/2026.",
 ])
 def test_prose_and_dates_untouched(text):
     assert normalize_for_speech(text) == text

@@ -59,14 +59,21 @@ def _say_token(token: str) -> str:
 
 def _say_expression(match: re.Match) -> str:
     expr = match.group()
-    if not re.search(r"[A-Za-z=^]", expr):  # chỉ số và gạch nối (ngày tháng, số trang) → không phải công thức
+    after_day = match.string[:match.start()].lower().endswith("ngày ")
+    date = re.fullmatch(r"\d+/\d+/\d+", expr) or (after_day and re.fullmatch(r"\d+/\d+", expr))
+    # chỉ số và gạch nối/hai chấm liền (số trang 45-50, 7:30), ngày 2/9, 12/10/2026 → không phải công thức
+    if date or not re.search(r"[A-Za-z=^+*×·/]|\s:\s", expr):
         return expr
-    parts = re.split(r"\s*([=+\-−*×·/:])\s*", expr)
-    words = [OPERATORS[p] if p in OPERATORS else _say_token(p) for p in parts if p]
+    parts = [p for p in re.split(r"\s*([=+\-−*×·/:])\s*", expr) if p]
+    words = []
+    for i, p in enumerate(parts):
+        fraction = p == "/" and parts[i - 1].isdigit() and i + 1 < len(parts) and parts[i + 1].isdigit()
+        words.append("phần" if fraction else OPERATORS[p] if p in OPERATORS else _say_token(p))  # 3/4 → ba phần bốn
     return " ".join(words)
 
 
 def normalize_for_speech(text: str) -> str:
+    text = re.sub(r"(?<=\d) x (?=\d)", " × ", text)  # dấu nhân tiểu học gõ bằng chữ x: 4,5 x 2
     return re.sub(r"\s+", " ", EXPRESSION.sub(_say_expression, text)).strip()
 
 
