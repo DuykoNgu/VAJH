@@ -16,6 +16,7 @@ from app.features.documents.ingest import SUBJECTS
 from app.features.documents.ingestion.lessons import (
     LessonRange,
     LessonRangeError,
+    unit_heading,
     validate_ranges,
 )
 from app.features.documents.ingestion.pdf import PdfError, open_pdf
@@ -51,6 +52,7 @@ class Lesson(BaseModel):
     title: str
     page_start: int
     page_end: int
+    unit: str | None = None  # "Chủ đề 2: Số thập phân"; None = sách không ghi chủ đề/chương trước bài này
 
 
 class LessonInput(BaseModel):
@@ -154,9 +156,18 @@ async def get_document_file(request: Request, doc_id: UUID, user: UserContext = 
 
 
 async def _lessons(doc_id: UUID) -> list[Lesson]:
-    rows = await _fetch("SELECT id, position, title, page_start, page_end FROM lessons WHERE document_id = %s"
-                        " ORDER BY position", (doc_id,))
-    return [Lesson(id=r[0], position=r[1], title=r[2], page_start=r[3], page_end=r[4]) for r in rows]
+    # Chủ đề đọc từ đoạn văn đầu trang mở bài (không lưu riêng: sửa bài / nạp lại sách vẫn đúng); bài không mở
+    # chủ đề mới thuộc chủ đề của bài trước.
+    rows = await _fetch(
+        "SELECT l.id, l.position, l.title, l.page_start, l.page_end,"
+        " (SELECT c.content FROM chunks c WHERE c.lesson_id = l.id AND c.page = l.page_start AND c.kind = 'text'"
+        "  ORDER BY c.id LIMIT 1)"
+        " FROM lessons l WHERE l.document_id = %s ORDER BY l.position", (doc_id,))
+    lessons, unit = [], None
+    for r in rows:
+        unit = unit_heading(r[5] or "") or unit
+        lessons.append(Lesson(id=r[0], position=r[1], title=r[2], page_start=r[3], page_end=r[4], unit=unit))
+    return lessons
 
 
 @router.get("/documents/{doc_id}/lessons", response_model=list[Lesson])

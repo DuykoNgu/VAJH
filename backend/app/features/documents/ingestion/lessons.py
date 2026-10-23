@@ -74,6 +74,24 @@ def normalize(text: str) -> str:
     return " ".join(re.sub(r"[^a-z0-9]+", " ", text).split())
 
 
+UNIT_RE = re.compile(r"^\s*(Chủ đề|CHỦ ĐỀ|Chương|CHƯƠNG)\s+(\d+|[IVXLC]+)\.?\s+(.*)", re.DOTALL)
+
+
+def unit_heading(text: str) -> str | None:
+    """'Chủ đề 2 SỐ THẬP PHÂN Bài 10 …' (đầu trang mở chủ đề/chương) → 'Chủ đề 2: Số thập phân'; không có → None."""
+    if not (m := UNIT_RE.match(text)):
+        return None
+    words = []
+    for word in m[3].split():
+        if word != word.upper() or not any(c.isalnum() for c in word):  # tiêu đề in hoa, dừng ở "Bài 10"
+            break
+        words.append(word)
+    if not words:
+        return None
+    title = ". ".join(s.capitalize() for s in " ".join(words).lower().split(". "))
+    return f"{m[1].capitalize()} {m[2]}: {title}"
+
+
 def verify_toc(entries: list[TocEntry], texts: list[str]) -> list[tuple[str, int]]:
     """Số trang in ≠ chỉ số PDF: thử các độ lệch (nhỏ trước), giữ độ lệch khớp nhiều tiêu đề nhất.
 

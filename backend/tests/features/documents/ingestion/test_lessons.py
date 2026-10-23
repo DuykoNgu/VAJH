@@ -6,6 +6,7 @@ from app.features.documents.ingestion.lessons import (
     LessonRange,
     LessonRangeError,
     segment,
+    unit_heading,
     validate_ranges,
 )
 from app.features.documents.ingestion.pdf import bookmarks, open_pdf, page_texts
@@ -81,3 +82,16 @@ def test_lesson_heading_after_chapter_intro_is_verified():
     entries = [TocEntry(title="Bài 1. Đơn thức", printed_page=1), TocEntry(title="Luyện tập chung", printed_page=2)]
     assert len(intro) > 300
     assert verify_toc(entries, texts) == [("Bài 1. Đơn thức", 2), ("Luyện tập chung", 3)]
+
+
+@pytest.mark.parametrize("text, unit", [
+    ("Chủ đề 2 SỐ THẬP PHÂN Bài 10 KHÁI NIỆM SỐ THẬP PHÂN Khám phá", "Chủ đề 2: Số thập phân"),
+    ("Chủ đề 5 MỘT SỐ HÌNH PHẲNG. CHU VI VÀ DIỆN TÍCH Bài 25 HÌNH", "Chủ đề 5: Một số hình phẳng. Chu vi và diện tích"),
+    ("Chủ đề 6 ÔN TẬP HỌC KÌ 1 Bài 30 ÔN TẬP", "Chủ đề 6: Ôn tập học kì 1"),
+    ("CHƯƠNG II. HẰNG ĐẲNG THỨC Bài 6", "Chương II: Hằng đẳng thức"),
+    ("Bài 11 SO SÁNH CÁC SỐ THẬP PHÂN Khám phá", None),
+    ("Chương ĐA THỨC ĐẠI SỐ Ở lớp 7", None),  # OCR mất số chương: không đoán
+    ("Chủ đề 3 bài này nói về", None),
+])
+def test_unit_heading(text, unit):
+    assert unit_heading(text) == unit
