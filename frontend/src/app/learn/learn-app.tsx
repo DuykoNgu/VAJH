@@ -2,7 +2,7 @@
 // Trang học voice-first, KHÔNG cần tìm nút: nhấn phím bất kỳ → LUSIA đọc danh sách bài → nói "bài hai" (hoặc
 // mũi tên + Enter) → LUSIA giảng từng phần, hỏi kiểm tra, chấm. Phím dùng được ở mọi nơi: Space nói, Esc dừng,
 // R nhắc lại, H trợ giúp. Lệnh nói: nhắc lại, dừng, đổi bài, chậm lại, nhanh lên, trợ giúp.
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { api, type Me } from "@/lib/api";
 import type { components } from "@/lib/api-types";
@@ -17,6 +17,22 @@ type Phase = "start" | "menu" | "session";
 type Status = "idle" | "listening" | "thinking" | "speaking";
 type Entry = { role: "student" | "lusia"; text: string; reply?: TurnReply };
 type MenuLesson = Lesson & { documentTitle: string };
+type Unit = { title: string; name: string; documentTitle: string; lessons: MenuLesson[] };
+
+/** Bài liền nhau cùng chủ đề (sách không ghi chủ đề → cả cuốn) thành một mục; giữ đúng thứ tự trong sách. */
+function groupUnits(lessons: MenuLesson[]): Unit[] {
+  const units: Unit[] = [];
+  for (const l of lessons) {
+    const title = l.unit ?? l.documentTitle;
+    const prev = units.at(-1);
+    if (prev && prev.title === title && prev.documentTitle === l.documentTitle) prev.lessons.push(l);
+    else units.push({ title, name: title.replace(/^(Chủ đề|Chương) [^:]+: /, ""), documentTitle: l.documentTitle, lessons: [l] });
+  }
+  return units;
+}
+
+const unitLine = (u: Unit, i: number) => `Số ${i + 1}: ${u.name}, ${u.lessons.length} bài.`;
+const lessonLine = (l: MenuLesson, i: number) => `Số ${i + 1}: ${l.title}.`;
 
 const STARTING = "Mình bắt đầu bài nhé.";
 const HELP =
@@ -40,7 +56,8 @@ function isTyping(target: EventTarget | null) {
 export default function LearnApp() {
   const [phase, setPhase] = useState<Phase>("start");
   const [me, setMe] = useState<Me | null>(null);
-  const [lessons, setLessons] = useState<MenuLesson[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [unit, setUnit] = useState<number | null>(null); // null = đang chọn chủ đề
   const [highlight, setHighlight] = useState(0);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>("idle");
@@ -75,16 +92,37 @@ export default function LearnApp() {
   }, [speak]);
 
   // ---------- Bắt đầu: phím bất kỳ / chạm bất kỳ đâu (trình duyệt chỉ cho phát âm thanh sau thao tác đầu tiên) ----------
-  const readMenu = useCallback((list: MenuLesson[], name?: string) => {
+  const howToPick = voiceInput ? "Em giữ phím cách và nói số, ví dụ: số một. Hoặc dùng phím mũi tên rồi nhấn Enter."
+                               : "Em dùng phím mũi tên lên xuống rồi nhấn Enter để chọn.";
+
+  /** Cấp 1: đọc các chủ đề theo thứ tự học (ngắn), không đọc cả trăm bài. */
+  const readUnits = useCallback((list: Unit[], name?: string) => {
     const intro = name ? `Chào ${name}. ` : "";
     const sentences = list.length
-      ? [`${intro}Có ${list.length} bài.`, ...list.map((l, i) => `Số ${i + 1}: ${l.title}.`),
-         voiceInput ? "Em giữ phím cách và nói số bài hoặc tên bài. Hoặc dùng phím mũi tên rồi nhấn Enter."
-                    : "Em dùng phím mũi tên lên xuống rồi nhấn Enter để chọn bài."]
+      ? [`${intro}Có ${list.length} chủ đề, em học lần lượt từ số 1.`, ...list.map(unitLine), howToPick]
       : [`${intro}Hiện chưa có bài học nào. Em nhờ thầy cô nạp và xuất bản sách nhé.`];
     player.current?.stop();
     speak(sentences);
-  }, [speak, voiceInput]);
+  }, [speak, howToPick]);
+
+  /** Cấp 2: các bài trong một chủ đề. */
+  const readLessons = useCallback((u: Unit) => {
+    player.current?.stop();
+    speak([`${u.name} có ${u.lessons.length} bài, học theo thứ tự.`, ...u.lessons.map(lessonLine), howToPick,
+           "Nói quay lại để chọn chủ đề khác."]);
+  }, [speak, howToPick]);
+
+  const openUnit = useCallback((index: number) => {
+    setUnit(index);
+    setHighlight(0);
+    readLessons(units[index]);
+  }, [units, readLessons]);
+
+  const backToUnits = useCallback(() => {
+    setHighlight(unit ?? 0);
+    setUnit(null);
+    readUnits(units);
+  }, [unit, units, readUnits]);
 
   const begin = useCallback(async () => {
     setPhase("menu");
@@ -92,17 +130,19 @@ export default function LearnApp() {
       const [who, documents] = await Promise.all([api<Me>("/me"), api<DocumentSummary[]>("/documents")]);
       setMe(who);
       setRate(who.speech_rate ?? 1);
-      const ready = documents.filter((d) => d.status === "ready");
+      const ready = documents.filter((d) => d.status === "ready")
+        .sort((a, b) => a.grade - b.grade || a.created_at.localeCompare(b.created_at)); // lớp dưới học trước
       const lists = await Promise.all(ready.map((d) =>
         api<Lesson[]>(`/documents/${d.id}/lessons`).then((ls) => ls.map((l) => ({ ...l, documentTitle: d.title })))));
-      const all = lists.flat();
-      setLessons(all);
+      const grouped = groupUnits(lists.flat());
+      setUnits(grouped);
+      setUnit(null);
       setHighlight(0);
-      readMenu(all, who.full_name);
+      readUnits(grouped, who.full_name);
     } catch {
       say("Mình không kết nối được máy chủ. Em nhờ thầy cô kiểm tra nhé.");
     }
-  }, [readMenu, say]);
+  }, [readUnits, say]);
 
   // ---------- Vào bài: LUSIA giảng ngay phần 1 ----------
   const startLesson = useCallback(async (lesson: MenuLesson) => {
@@ -134,8 +174,9 @@ export default function LearnApp() {
     setSessionId(null);
     setEntries([]);
     setPhase("menu");
-    readMenu(lessons);
-  }, [sessionId, lessons, readMenu]);
+    if (unit === null) readUnits(units);
+    else readLessons(units[unit]);
+  }, [sessionId, unit, units, readUnits, readLessons]);
 
   // ---------- Lệnh xử lý ngay trên trình duyệt ----------
   const runCommand = useCallback((command: Command) => {
@@ -152,7 +193,8 @@ export default function LearnApp() {
         speak([HELP], false);
         break;
       case "change":
-        backToMenu();
+        if (phase === "menu" && unit !== null) backToUnits();
+        else backToMenu();
         break;
       case "slower":
       case "faster": {
@@ -163,7 +205,15 @@ export default function LearnApp() {
         break;
       }
     }
-  }, [speak, backToMenu, rate]);
+  }, [speak, backToMenu, backToUnits, phase, unit, rate]);
+
+  /** Mục đang hiện ở menu: chủ đề, hoặc các bài của chủ đề đã chọn. Chọn = mở chủ đề / vào bài. */
+  const menuTitles = useMemo(
+    () => (unit === null ? units.map((u) => u.title) : (units[unit]?.lessons ?? []).map((l) => l.title)), [unit, units]);
+  const choose = useCallback((i: number) => {
+    if (unit === null) openUnit(i);
+    else startLesson(units[unit].lessons[i]);
+  }, [unit, units, openUnit, startLesson]);
 
   const sendTurn = useCallback(async (text: string) => {
     if (!sessionId || !text.trim() || busy.current) return;
@@ -192,12 +242,12 @@ export default function LearnApp() {
     const command = matchCommand(text);
     if (command) return runCommand(command);
     if (phase === "menu") {
-      const index = matchLesson(text, lessons.map((l) => l.title));
-      if (index === null) return say(`Mình chưa nghe rõ “${text}”. Em nói lại số bài nhé, ví dụ: bài hai.`);
-      return startLesson(lessons[index]);
+      const index = matchLesson(text, menuTitles);
+      if (index === null) return say(`Mình chưa nghe rõ “${text}”. Em nói lại nhé, ví dụ: số hai.`);
+      return choose(index);
     }
     if (phase === "session") sendTurn(text);
-  }, [phase, lessons, runCommand, say, startLesson, sendTurn]);
+  }, [phase, menuTitles, runCommand, say, choose, sendTurn]);
 
   // ---------- Nghe: giữ Space hoặc nút "Giữ để nói" ----------
   const startListening = useCallback(() => {
@@ -238,17 +288,22 @@ export default function LearnApp() {
         if (!e.repeat) startListening();
         return;
       }
-      if (phase === "menu" && lessons.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      if (phase === "menu" && menuTitles.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
         e.preventDefault();
-        const next = (highlight + (e.key === "ArrowDown" ? 1 : -1) + lessons.length) % lessons.length;
+        const next = (highlight + (e.key === "ArrowDown" ? 1 : -1) + menuTitles.length) % menuTitles.length;
         setHighlight(next);
         player.current?.stop();
-        speak([`Số ${next + 1}: ${lessons[next].title}.`], false);
+        speak([unit === null ? unitLine(units[next], next) : lessonLine(units[unit].lessons[next], next)], false);
         return;
       }
-      if (phase === "menu" && e.key === "Enter" && lessons[highlight]) {
+      if (phase === "menu" && e.key === "Enter" && highlight < menuTitles.length) {
         e.preventDefault();
-        startLesson(lessons[highlight]);
+        choose(highlight);
+        return;
+      }
+      if (phase === "menu" && e.key === "Backspace" && unit !== null) {
+        e.preventDefault();
+        backToUnits();
       }
     }
     function up(e: KeyboardEvent) {
@@ -263,7 +318,8 @@ export default function LearnApp() {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [phase, lessons, highlight, begin, runCommand, startListening, stopListening, startLesson, speak]);
+  }, [phase, unit, units, menuTitles.length, highlight, begin, runCommand, startListening, stopListening, choose,
+      backToUnits, speak]);
 
   // ---------- Màn hình bắt đầu: cả trang là một nút ----------
   if (phase === "start") {
@@ -303,11 +359,31 @@ export default function LearnApp() {
         </button>
       )}
 
-      {phase === "menu" && (
-        <section aria-labelledby="bai-hoc" className="flex flex-col gap-2">
-          <h2 id="bai-hoc" className="text-xl font-semibold">Chọn bài học</h2>
+      {phase === "menu" && unit === null && (
+        <section aria-labelledby="chu-de" className="flex flex-col gap-2">
+          <h2 id="chu-de" className="text-xl font-semibold">Chọn chủ đề — học lần lượt từ số 1</h2>
           <ol className="flex flex-col gap-2">
-            {lessons.map((l, i) => (
+            {units.map((u, i) => (
+              <li key={`${u.documentTitle}|${u.title}`}>
+                <button onClick={() => openUnit(i)} aria-current={i === highlight}
+                        className={`w-full rounded-lg border-2 p-3 text-left ${i === highlight ? "border-blue-700 font-semibold" : ""}`}>
+                  Số {i + 1}: {u.title}{" "}
+                  <span className="text-base font-normal">— {u.title === u.documentTitle ? "" : `${u.documentTitle} · `}{u.lessons.length} bài</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      {phase === "menu" && unit !== null && units[unit] && (
+        <section aria-labelledby="bai-hoc" className="flex flex-col gap-2">
+          <h2 id="bai-hoc" className="text-xl font-semibold">{units[unit].title} — chọn bài</h2>
+          <button onClick={backToUnits} className="self-start rounded-lg border-2 px-3 py-1">
+            ← Quay lại danh sách chủ đề <kbd className="rounded border px-1">Backspace</kbd>
+          </button>
+          <ol className="flex flex-col gap-2">
+            {units[unit].lessons.map((l, i) => (
               <li key={l.id}>
                 <button onClick={() => startLesson(l)} aria-current={i === highlight}
                         className={`w-full rounded-lg border-2 p-3 text-left ${i === highlight ? "border-blue-700 font-semibold" : ""}`}>

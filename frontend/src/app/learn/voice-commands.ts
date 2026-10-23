@@ -6,7 +6,7 @@ export type Command = "repeat" | "stop" | "change" | "slower" | "faster" | "help
 const COMMANDS: [Command, string[]][] = [
   ["repeat", ["nhắc lại", "đọc lại", "nói lại"]],
   ["stop", ["dừng lại", "dừng"]],
-  ["change", ["đổi bài", "chọn bài khác", "bài khác"]],
+  ["change", ["đổi bài", "chọn bài khác", "bài khác", "quay lại", "chủ đề khác"]],
   ["slower", ["chậm lại", "nói chậm", "đọc chậm"]],
   ["faster", ["nhanh lên", "nói nhanh", "đọc nhanh"]],
   ["help", ["trợ giúp", "giúp mình", "hướng dẫn"]],
@@ -37,17 +37,18 @@ export function stripDiacritics(text: string): string {
 
 export function spokenNumber(text: string): number | null {
   const t = stripDiacritics(text);
-  const digits = t.match(/bai (?:so )?(\d+)/) ?? t.match(/^(\d+)$/);
+  const digits = t.match(/(?:bai|chu de|so) (?:so )?(\d+)/) ?? t.match(/^(\d+)$/);
   if (digits) return Number(digits[1]);
-  const word = t.match(/bai (?:so )?([a-z]+)/)?.[1] ?? (t.split(" ").length === 1 ? t : undefined);
+  const word = t.match(/(?:bai|chu de|so) (?:so )?([a-z]+)/)?.[1] ?? (t.split(" ").length === 1 ? t : undefined);
   return word && word in NUMBER_WORDS ? NUMBER_WORDS[word] : null;
 }
 
-/** Chỉ số bài (0-based) trong danh sách, hoặc null. Ưu tiên số bài in trong tên ("Bài 2. …"), rồi số thứ tự. */
+/** Chỉ số (0-based) trong danh sách, hoặc null. "bài 10" → bài có tên "Bài 10. …"; "số 2" → mục thứ 2 như lúc đọc. */
 export function matchLesson(text: string, titles: string[]): number | null {
   const n = spokenNumber(text);
   if (n !== null) {
-    const byTitle = titles.findIndex((title) => stripDiacritics(title).startsWith(`bai ${n} `));
+    const byTitle = /^so /.test(stripDiacritics(text)) ? -1
+      : titles.findIndex((title) => stripDiacritics(title).startsWith(`bai ${n} `));
     if (byTitle >= 0) return byTitle;
     if (n >= 1 && n <= titles.length) return n - 1;
   }

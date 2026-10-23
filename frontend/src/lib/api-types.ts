@@ -879,6 +879,8 @@ export interface components {
             page_start: number;
             /** Page End */
             page_end: number;
+            /** Unit */
+            unit?: string | null;
         };
         /** LessonInput */
         LessonInput: {
